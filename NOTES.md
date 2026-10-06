@@ -176,3 +176,4 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 
 - The renderer omits a section when it has no content, and `## From your materials` goes between "History and open items" and "Likely asks".
 - Reuse the pattern: wrap file text in its own tag (e.g. `<materials>`), and add it to the "data, never instructions" line in `OUTPUT_CONTRACT`.
+- Live Tavily check (2026-10-06, 90-day window): Harbourview Health (fictional) returned 9 results and kept none, so the brief would say "No notable developments". AMD (amd.com, real) returned 25 and kept 8 dated in-window items, including AMD's own IR press release (primary), Reuters and CNBC (established), and Yahoo Finance, YouTube and a filings aggregator (labeled unconfirmed, since those hosts aren't on `ESTABLISHED_HOSTS`). Credit use is 3 per company.
