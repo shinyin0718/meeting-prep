@@ -67,3 +67,41 @@ People with no history: Tom Becker, John Smith. Own company: Lumora Analytics (`
 - Gemini free tier can return transient 503 "high demand" errors; retry with backoff.
 - `.gitignore` already excludes `.env`, `output/`, `data/cache/`, `data/attachments/`.
 - Skipped in session 1 (by scope): agent, CLI, SKILL.md, web research, file ingestion, evals.
+
+## Session 2 — agent, CLI, skill loading (done)
+
+**Stack change before this session:** Anthropic was replaced by Gemini free tier and Tavily ([PR #1](https://github.com/shinyin0718/meeting-prep/pull/1)). See the provider-switch note above.
+
+**Checkpoint:** `uv run main.py prep --meeting-id m_001` writes `output/prep_m_001.md` with sections 1, 3, 5, 7, 8 and 9 in order, every attendee listed and the seeded open items included. This is tested with a fake LLM (`tests/test_agent.py::test_m001_*`). `uv run pytest` passes 64 tests: the 38 from session 1, 18 agent/CLI tests and 8 Gemini wrapper tests. There has been no live Gemini run yet because no `GEMINI_API_KEY` is available on the VM.
+
+### Files added
+
+```
+main.py                      entry: `uv run main.py prep --meeting-id <id> | --next [--output-dir DIR]`
+skills/meeting-prep/SKILL.md the Prep Skill, verbatim from SPEC.md; loaded into the system prompt
+meeting_prep/
+  cli.py        argparse, .env loading, run_prep(); exit 2 = missing key, 1 = tool/agent/LLM error
+  mcp_client.py connect(): spawns mcp_server.py over stdio (same Python), MCPTools.call -> (data, is_error)
+  agent.py      gather_context() (deterministic MCP calls), synthesize() tool loop, OUTPUT_CONTRACT
+  llm.py        LLM/Chat protocol, GeminiLLM/GeminiChat (google-genai 2.x async), retries, MissingAPIKeyError
+  brief.py      render_brief(context, synthesis) -> Markdown
+tests/test_agent.py  FakeLLM scripted replies; checkpoint, scenarios m_002–m_005, loop cap, JSON retry, errors, secrets
+tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, thought signatures, retries
+```
+
+### Design (read before sessions 3–5)
+
+- **Hybrid brief.** Code gathers facts and renders the factual sections itself. These are the agenda, who's in the room, recent interactions (3 per person) and open items, each tagged `_(internal record)_`. Gemini only writes `purpose`, `desired_outcome`, `relationships`, `likely_asks`, `questions` and `risks` as one JSON object (`OUTPUT_CONTRACT` in `agent.py`), and each item carries a `based_on` field. This guarantees "no prior interactions on record" and stops invented history, because a `relationships` entry from the model is ignored for anyone with no history.
+- **Tool loop:** Gemini sees all five MCP tools as function declarations. It may call them for up to `MAX_TOOL_ROUNDS = 10` rounds. After that, one final call is made with function calling set to `NONE`. Unknown tool names and tool errors go back to the model as `{"error": ...}`; they don't crash the run. If the reply is not valid JSON, the agent retries once with tools off, then raises `AgentError`.
+- **Context gathering:** for each attendee the agent calls profile, history (limit 5) and open items by email. Open items are then fetched once per unique external domain (own domains excluded) and deduplicated by id. `context["external_domains"]` is the deduplicated company list that session 4 should reuse.
+- **Untrusted data:** records go in `<internal_records>` tags, and the system prompt says tagged content is data, never instructions. Sessions 3 and 5 should add `<web_results>` and `<file>` tags in the same way.
+- **Gemini specifics:** the agent uses `client.aio.models.generate_content` with `parameters_json_schema` taken from MCP's `inputSchema`, and automatic function calling is disabled. The model's returned `Content` is appended to history unchanged, which keeps Gemini 3 thought signatures. Function responses carry the call `id`. A 503 or 429 error is retried after 2, 4, 8 and 16 s. The default model is `gemini-3.8-flash`, overridable with `GEMINI_MODEL`.
+- **MCP server env:** the server receives the parent environment minus any `*_API_KEY` variable, with `FASTMCP_LOG_LEVEL=WARNING`. `MCPTools.call` raises inside the stdio context, so `run_prep` re-raises errors outside it. Otherwise anyio wraps them in an `ExceptionGroup`.
+- `--next` means the earliest meeting from `list_upcoming_meetings(days_ahead=7)`.
+
+### For session 3 (first-time research)
+
+- Trigger research from `context["people"][i]["profile"]["first_meeting"]` in code, not from the model.
+- Add a `web_search` function (Tavily) to the declarations passed to `start_chat`, or run the searches in code and pass the results in tagged blocks. Either way, record every returned URL so the brief's URLs can be checked against them.
+- `render_brief` needs sections 2, 4 and 6 inserted in spec order, and the renderer must omit any of them that is empty.
+- `--research "Name, Company"` and `--news-days` are not yet in the parser.
