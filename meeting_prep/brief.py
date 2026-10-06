@@ -13,6 +13,8 @@ UNCONFIRMED = "couldn't confirm identity"
 URL_RE = re.compile(r"https?://|www\.", re.IGNORECASE)
 NO_NEWS = "No notable developments found in the last {days} days."
 MAX_NEWS_ITEMS = 5
+MAX_MATERIAL_POINTS = 3
+MATERIAL_POINT_BUDGET = 9  # across all files, to stay on one page
 
 
 def _when(meeting: dict) -> str:
@@ -127,6 +129,30 @@ def _sources(research: list[dict], news: list[dict], cites: dict[str, int]) -> l
     return out
 
 
+def _filename(name: str) -> str:
+    return "`" + _clean(name).replace("`", "'") + "`"
+
+
+def _materials(materials: list[dict], synthesis: dict[str, Any]) -> list[str]:
+    if not materials:
+        return []
+    notes = {str(k).strip().upper(): v for k, v in (synthesis.get("materials") or {}).items()}
+    per_file = max(1, min(MAX_MATERIAL_POINTS, MATERIAL_POINT_BUDGET // len(materials)))
+    out = ["## From your materials", ""]
+    for m in materials:
+        name = _filename(m["file"])
+        if m["status"] != "ok":
+            out.append(f"- {name}: couldn't read this file ({m['reason']}); skipped.")
+            continue
+        points = notes.get(m["id"])
+        points = [points] if isinstance(points, str) else points if isinstance(points, list) else []
+        points = [p for p in (_clean(x) for x in points if isinstance(x, str)) if p and not URL_RE.search(p)]
+        out += [f"- {p} _(file: {name})_" for p in points[:per_file]] or [f"- {name}: no key points for this meeting."]
+        if m["truncated"]:
+            out.append(f"- Only the first {m['chars']:,} characters of {name} were read.")
+    return out + [""]
+
+
 def render_brief(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
     meeting = context["meeting"]
     people = context["people"]
@@ -186,6 +212,8 @@ def render_brief(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
         overdue = " **— overdue**" if item.get("overdue") else ""
         out.append(f"- {_clean(item['description'])}{about} — owner {item['owner']}, due {item['due_date']}{overdue} {TAG}")
     out.append("")
+
+    out += _materials(context.get("materials") or [], synthesis)
 
     out += ["## Likely asks", ""]
     out += _items(synthesis.get("likely_asks", []), lambda e: (
