@@ -66,6 +66,11 @@ def _supported(folder: Path) -> list[Path]:
     return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED)
 
 
+def stored(meeting_id: str, root: Path | None = None) -> list[Path]:
+    """Files already attached to a meeting (reused on every prep)."""
+    return _supported((root or attachments_root()) / meeting_id)
+
+
 def _pdf_text(path: Path) -> str:
     from pypdf import PdfReader
     from pypdf.errors import PdfReadError

@@ -11,6 +11,7 @@ from typing import Any, Protocol
 DEFAULT_MODEL = "gemini-3.8-flash"
 FALLBACK_MODEL = "gemini-3.6-flash"
 RETRY_DELAYS = (2, 4, 8, 16)
+DEFAULT_TIMEOUT_SECONDS = 90
 
 
 class MissingAPIKeyError(RuntimeError):
@@ -67,6 +68,12 @@ def _is_retryable(exc: Exception) -> bool:
     return isinstance(exc, errors.ClientError) and exc.code == 429 and not _is_daily_quota(exc)
 
 
+def _is_timeout(exc: Exception) -> bool:
+    import httpx
+
+    return isinstance(exc, (TimeoutError, httpx.TimeoutException))
+
+
 def _is_daily_quota(exc: Exception) -> bool:
     """Per-day quota 429s won't clear within any sensible backoff, so retrying only wastes requests."""
     details = (getattr(exc, "details", None) or {}).get("error", {}).get("details", [])
@@ -82,8 +89,11 @@ class GeminiLLM:
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep):
         if client is None:
             from google import genai
+            from google.genai import types
 
-            client = genai.Client(api_key=api_key or require_gemini_key())
+            timeout = float(os.environ.get("GEMINI_TIMEOUT_SECONDS") or DEFAULT_TIMEOUT_SECONDS)
+            client = genai.Client(api_key=api_key or require_gemini_key(),
+                                  http_options=types.HttpOptions(timeout=int(timeout * 1000)))
         self.client = client
         self.model = model or os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_MODEL
         self.sleep = sleep
@@ -171,6 +181,10 @@ class GeminiChat:
                         f"Gemini's free daily request limit for {self.llm.model} is used up. Try again tomorrow, "
                         f"or set GEMINI_MODEL to another model (e.g. {other}); each model has its own limit."
                     ) from exc
+                if _is_timeout(exc):
+                    # Not retried: a stuck request may already count against the small free quota.
+                    raise LLMError(f"Gemini didn't answer in time ({exc.__class__.__name__}); it may be busy. "
+                                   "Try again in a few minutes.") from exc
                 if delay is None or not _is_retryable(exc):
                     raise LLMError(f"Gemini request failed: {exc}") from exc
                 await self.llm.sleep(delay)
