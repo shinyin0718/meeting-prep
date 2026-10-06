@@ -1,0 +1,33 @@
+{
+  "query": "\"Tom Becker\" \"Harbourview Health\" Data Platform Lead",
+  "results": [
+    {
+      "title": "Harbourview Health appoints Tom Becker as Data Platform Lead",
+      "url": "https://www.harbourviewhealth.com/newsroom/tom-becker-data-platform-lead",
+      "content": "Harbourview Health has appointed Tom Becker as Data Platform Lead. Becker joins from Northwind Clinics, where he spent six years running data engineering for the clinic network's analytics programme.",
+      "score": 0.91,
+      "published_date": "Mon, 05 Jan 2026 09:00:00 GMT"
+    },
+    {
+      "title": "Health Data Summit 2025 speakers: Tom Becker",
+      "url": "https://healthdatasummit.example.org/2025/speakers/tom-becker",
+      "content": "Tom Becker (Harbourview Health, formerly Northwind Clinics) spoke on moving patient analytics from nightly batch jobs to a governed lakehouse.",
+      "score": 0.84,
+      "published_date": "2025-10-12"
+    },
+    {
+      "title": "Tom Becker - Data Platform Lead - Harbourview Health | LinkedIn",
+      "url": "https://www.linkedin.com/in/tom-becker-data-platform",
+      "content": "Data Platform Lead at Harbourview Health. Previously Northwind Clinics.",
+      "score": 0.8,
+      "published_date": null
+    },
+    {
+      "title": "Tom Becker, Realtor - Lakeside Homes",
+      "url": "https://lakeside-homes.example.com/agents/tom-becker",
+      "content": "Tom Becker has helped families buy and sell homes around the lake for 20 years. Call his office any time.",
+      "score": 0.42,
+      "published_date": "2025-06-01"
+    }
+  ]
+}
