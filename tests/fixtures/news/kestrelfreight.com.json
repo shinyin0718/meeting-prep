@@ -1,0 +1,27 @@
+{
+  "company": "Kestrel Freight",
+  "query": "\"Kestrel Freight\" kestrelfreight.com announcement OR press release",
+  "results": [
+    {
+      "title": "Kestrel Freight launches real-time shipment tracking API",
+      "url": "https://www.kestrelfreight.com/news/real-time-tracking-api",
+      "content": "Kestrel Freight customers can now pull live shipment status and ETAs into their own systems through a new API.",
+      "score": 0.86,
+      "published_date": "2026-01-06"
+    },
+    {
+      "title": "Kestrel Freight reportedly in talks to acquire regional carrier",
+      "url": "https://www.freightwaves.com/news/kestrel-freight-reportedly-in-talks-regional-carrier",
+      "content": "Kestrel Freight is in talks to buy a Midwest regional carrier, according to people familiar with the matter. Neither company commented.",
+      "score": 0.8,
+      "published_date": "2025-12-29"
+    },
+    {
+      "title": "Kestrel Freight cuts 40 dispatch jobs, forum post claims",
+      "url": "https://logistics-chatter.example.net/2025/12/kestrel-freight-dispatch-cuts",
+      "content": "A post on a logistics forum claims Kestrel Freight cut 40 dispatch roles after automating route planning.",
+      "score": 0.5,
+      "published_date": "2025-12-10"
+    }
+  ]
+}

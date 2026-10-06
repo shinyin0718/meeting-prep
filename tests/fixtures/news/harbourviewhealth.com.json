@@ -1,0 +1,48 @@
+{
+  "company": "Harbourview Health",
+  "query": "\"Harbourview Health\" harbourviewhealth.com announcement OR press release",
+  "results": [
+    {
+      "title": "Harbourview Health names Dr. Mei Chen Chief Digital Officer",
+      "url": "https://www.harbourviewhealth.com/newsroom/chief-digital-officer",
+      "content": "Harbourview Health has appointed Dr. Mei Chen as its first Chief Digital Officer, overseeing data, analytics and IT. Read more at https://www.harbourviewhealth.com/newsroom.",
+      "score": 0.88,
+      "published_date": "Thu, 08 Jan 2026 14:00:00 GMT"
+    },
+    {
+      "title": "Harbourview Health completes acquisition of Bayside Clinics",
+      "url": "https://www.fiercehealthcare.com/providers/harbourview-health-completes-bayside-acquisition",
+      "content": "Harbourview Health closed its acquisition of the four-site Bayside Clinics group, adding about 600 staff.",
+      "score": 0.83,
+      "published_date": "2025-12-02"
+    },
+    {
+      "title": "Harbourview Health and State HIE partner on statewide data exchange",
+      "url": "https://www.businesswire.com/news/home/20251110005123/en/harbourview-health-hie-partnership",
+      "content": "Harbourview Health will connect its hospitals to the state health information exchange to share records with partner providers.",
+      "score": 0.79,
+      "published_date": "2025-11-10"
+    },
+    {
+      "title": "Harbourview Health reports FY2024 results",
+      "url": "https://www.harbourviewhealth.com/newsroom/fy2024-results",
+      "content": "Harbourview Health reported revenue growth of 6% for fiscal 2024.",
+      "score": 0.7,
+      "published_date": "2025-06-30"
+    },
+    {
+      "title": "Careers at Harbourview Health",
+      "url": "https://www.harbourviewhealth.com/careers",
+      "content": "Join Harbourview Health. Open roles in nursing, IT and administration.",
+      "score": 0.6,
+      "published_date": null
+    },
+    {
+      "title": "Harbourview Capital closes third infrastructure fund",
+      "url": "https://www.reuters.com/business/harbourview-capital-closes-fund-iii",
+      "content": "Harbourview Capital, the Boston-based infrastructure investor, closed its third fund at $2.1 billion.",
+      "score": 0.55,
+      "published_date": "2025-12-20"
+    }
+  ]
+}

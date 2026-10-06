@@ -35,7 +35,8 @@ class SearchResult:
 
 
 class WebSearch(Protocol):
-    async def search(self, query: str, *, max_results: int = 5, topic: str = "general") -> list[SearchResult]: ...
+    async def search(self, query: str, *, max_results: int = 5, topic: str = "general",
+                     start_date: str | None = None) -> list[SearchResult]: ...
 
 
 def require_tavily_key() -> str:
@@ -78,7 +79,8 @@ class TavilySearch:
         self._transport = transport
         self._timeout = timeout
 
-    async def search(self, query: str, *, max_results: int = 5, topic: str = "general") -> list[SearchResult]:
+    async def search(self, query: str, *, max_results: int = 5, topic: str = "general",
+                     start_date: str | None = None) -> list[SearchResult]:
         key = self._api_key or require_tavily_key()
         body = {
             "query": query,
@@ -89,6 +91,9 @@ class TavilySearch:
             "include_answer": False,
             "include_raw_content": False,
         }
+        if start_date:
+            # Tavily drops results dated before start_date, and undated ones, when this filter is on.
+            body |= {"start_date": start_date, "filter_by_published_date": True}
         try:
             async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
                 response = await client.post(TAVILY_URL, json=body, headers={"Authorization": f"Bearer {key}"})

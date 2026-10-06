@@ -2,7 +2,7 @@
 
 Command-line agent that turns an upcoming meeting into a one-page prep brief. See [SPEC.md](SPEC.md) for the full build spec and [NOTES.md](NOTES.md) for build progress.
 
-> Status: session 3 of 6. The mock data, MCP server, agent/CLI and first-time contact research are done. Company news (session 4) and file attachments (session 5) come next.
+> Status: session 4 of 6. The mock data, MCP server, agent/CLI, first-time contact research and company news are done. File attachments (session 5) come next.
 
 ## Setup
 
@@ -28,6 +28,7 @@ cp .env.example .env     # then fill in values; never commit .env
 uv run main.py prep --meeting-id m_001   # write output/prep_m_001.md (needs GEMINI_API_KEY)
 uv run main.py prep --next               # brief for the earliest meeting in the next 7 days
 uv run main.py prep --meeting-id m_001 --research "Grace Liu, Harbourview Health"   # also research anyone by hand
+uv run main.py prep --meeting-id m_001 --news-days 30   # company news window (default 90 days)
 uv run pytest                    # run tests (Gemini and Tavily are faked; no keys needed)
 uv run mcp dev mcp_server.py     # open the MCP Inspector to browse/try the tools
 uv run mcp_server.py             # run the MCP server on stdio
@@ -40,6 +41,7 @@ uv run mcp_server.py             # run the MCP server on stdio
 ## How a brief is made
 
 1. `main.py` starts `mcp_server.py` over stdio and reads the meeting, every attendee's profile, history and open items through the MCP tools.
-2. Attendees flagged `first_meeting` (external, no history) and anyone passed with `--research` are searched on Tavily: 3 searches each, on name, company, role and email domain together. Only dated results that mention the name *and* the company or domain count; if none do, the brief says "couldn't confirm identity" and states nothing about the person. `TAVILY_API_KEY` is only needed when this step runs.
-3. Gemini gets `skills/meeting-prep/SKILL.md` as its instructions plus those records (wrapped in `<internal_records>` tags and treated as data). Matching search results go in `<web_results>` tags as numbered ids (`S1`, `S2`…) with title, date and snippet but no URL. It may call the same read-only tools (up to 10 rounds), then returns purpose, likely asks, questions, risks and background facts (each citing result ids) as JSON.
-4. The program renders the Markdown: factual sections (agenda, who's in the room, history, open items) straight from the records, so history is never invented, and the judgment sections from Gemini's answer. Background facts become inline `[n]` references to a Sources list (title, link, date) built from the search results, so every URL in the brief came from Tavily; facts citing no valid result, or containing a URL, are dropped.
+2. Each external company (one per email domain; `OWN_COMPANY_DOMAINS` skipped) gets 3 Tavily searches limited to the news window. Only items that name the company or its domain and carry a date inside the window are kept; there is no fallback to older news. Items from neither the company's own site, a press wire nor an established outlet, or framed as rumor ("reportedly", "in talks"…), are labeled unconfirmed.
+3. Attendees flagged `first_meeting` (external, no history) and anyone passed with `--research` are searched on Tavily: 3 searches each, on name, company, role and email domain together. Only dated results that mention the name *and* the company or domain count; if none do, the brief says "couldn't confirm identity" and states nothing about the person. `TAVILY_API_KEY` is only needed when this step runs.
+4. Gemini gets `skills/meeting-prep/SKILL.md` as its instructions plus those records (wrapped in `<internal_records>` tags and treated as data). Matching search results go in `<web_results>` tags as numbered ids (`S1`, `S2`…) with title, date and snippet but no URL. It may call the same read-only tools (up to 10 rounds), then returns purpose, likely asks, questions, risks background facts (each citing result ids) and, per news item, a summary, why it matters and a 0–3 relevance as JSON.
+5. The program renders the Markdown: factual sections (agenda, who's in the room, history, open items) straight from the records, so history is never invented, and the judgment sections from Gemini's answer. News is ranked by relevance, then date (at most 5 per company; relevance 0 drops an item). News items and background facts become inline `[n]` references to a Sources list (title, link, date) built from the search results, so every URL in the brief came from Tavily; facts citing no valid result, or containing a URL, are dropped.

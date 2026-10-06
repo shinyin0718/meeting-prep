@@ -3,6 +3,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from meeting_prep import agent, cli
 from meeting_prep.llm import LLMReply, ToolCall
 from meeting_prep.mcp_client import _server_env
@@ -17,7 +19,7 @@ SECTIONS = [
     "## Suggested questions and talking points",
     "## Risks and watch-outs",
 ]
-OMITTED = ["## Company snapshot", "## Background on new attendees", "## From your materials"]
+OMITTED = ["## Background on new attendees", "## From your materials"]
 AISHA = "aisha.rahman@harbourviewhealth.com"
 TOM = "tom.becker@harbourviewhealth.com"
 
@@ -59,22 +61,39 @@ class FakeLLM:
 
 
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "search"
+NEWS_DIR = ROOT / "tests" / "fixtures" / "news"
 
 
 class FakeSearch:
-    """Returns tests/fixtures/search/<first_last>.json when that person's name is in the query."""
+    """Person searches: tests/fixtures/search/<first_last>.json when that name is in the query.
+    Company news searches (the ones passing start_date): tests/fixtures/news/<domain>.json when the
+    fixture's company is in the query. Neither filters by date, so the date checks are the code's own."""
 
     def __init__(self, error=None):
-        self.calls = []
+        self.requests = []
         self.error = error
 
-    async def search(self, query, *, max_results=5, topic="general"):
-        self.calls.append(query)
+    @property
+    def person_calls(self):
+        return [r["query"] for r in self.requests if r["start_date"] is None]
+
+    @property
+    def news_calls(self):
+        return [r for r in self.requests if r["start_date"] is not None]
+
+    async def search(self, query, *, max_results=5, topic="general", start_date=None):
+        self.requests.append({"query": query, "topic": topic, "start_date": start_date, "max_results": max_results})
         if self.error:
             raise self.error
-        for path in sorted(FIXTURE_DIR.glob("*.json")):
-            if path.stem.replace("_", " ") in query.lower():
-                return parse_results(json.loads(path.read_text()))[:max_results]
+        if start_date is None:
+            for path in sorted(FIXTURE_DIR.glob("*.json")):
+                if path.stem.replace("_", " ") in query.lower():
+                    return parse_results(json.loads(path.read_text()))[:max_results]
+            return []
+        for path in sorted(NEWS_DIR.glob("*.json")):
+            data = json.loads(path.read_text())
+            if data["company"].lower() in query.lower():
+                return parse_results(data)[:max_results]
         return []
 
 
@@ -167,6 +186,7 @@ def test_m005_internal_only_is_valid(tmp_path):
     text = brief(tmp_path, "m_005")
     assert all(s in text for s in SECTIONS)
     assert "external)" not in text
+    assert "## Company snapshot" not in text
 
 
 def test_m004_queries_shared_company_once(tmp_path, monkeypatch):
@@ -284,7 +304,8 @@ SUMMIT = "https://healthdatasummit.example.org/2025/speakers/tom-becker"
 
 
 def fixture_urls():
-    return {r["url"] for p in FIXTURE_DIR.glob("*.json") for r in json.loads(p.read_text())["results"]}
+    return {r["url"] for d in (FIXTURE_DIR, NEWS_DIR) for p in d.glob("*.json")
+            for r in json.loads(p.read_text())["results"]}
 
 
 def with_background(background):
@@ -305,18 +326,19 @@ def test_known_contacts_trigger_no_search(tmp_path):
     search = FakeSearch()
     rc, _ = run(tmp_path, "--meeting-id", "m_001", searcher=search)
     assert rc == 0
-    assert search.calls == []
+    assert search.person_calls == []
     text = brief(tmp_path, "m_001")
-    assert "## Background on new attendees" not in text and "## Sources" not in text
+    assert "## Background on new attendees" not in text
+    assert "tom-becker" not in text.split("## Sources")[1]  # sources are company news only
 
 
 def test_first_time_contact_triggers_capped_search_on_name_company_role_domain(tmp_path):
     search = FakeSearch()
     run(tmp_path, "--meeting-id", "m_002", searcher=search)
-    assert 3 <= len(search.calls) <= 5
-    assert all("Tom Becker" in q for q in search.calls)
-    assert all(w in search.calls[0] for w in ("Harbourview Health", "Data Platform Lead"))
-    assert any("harbourviewhealth.com" in q for q in search.calls)
+    assert 3 <= len(search.person_calls) <= 5
+    assert all("Tom Becker" in q for q in search.person_calls)
+    assert all(w in search.person_calls[0] for w in ("Harbourview Health", "Data Platform Lead"))
+    assert any("harbourviewhealth.com" in q for q in search.person_calls)
 
 
 def test_background_cites_only_urls_from_search_results(tmp_path):
@@ -329,13 +351,14 @@ def test_background_cites_only_urls_from_search_results(tmp_path):
     assert positions == sorted(positions)
     section = text.split("## Background on new attendees")[1].split("## History")[0]
     assert "Public web sources, unverified" in section
-    assert "January 2026. [1]" in section and "lakehouse migrations. [1][2]" in section
+    # [1]-[3] are the company snapshot, which comes first.
+    assert "January 2026. [4]" in section and "lakehouse migrations. [4][5]" in section
     assert "Invented claim" not in text and "evil.example.com" not in text and "no source at all" not in text
     urls = set(URL_RE.findall(text))
-    assert urls == {NEWSROOM, SUMMIT}
+    assert {u for u in urls if "tom-becker" in u} == {NEWSROOM, SUMMIT}
     assert urls <= fixture_urls()
     sources = text.split("## Sources")[1]
-    assert "1. [Harbourview Health appoints Tom Becker as Data Platform Lead]" in sources and "2026-01-05" in sources
+    assert "4. [Harbourview Health appoints Tom Becker as Data Platform Lead]" in sources and "2026-01-05" in sources
     assert "2025-10-12" in sources
     assert len(text.split()) < 700
 
@@ -378,18 +401,16 @@ def test_manual_research_flag_researches_anyone(tmp_path):
     rc, _ = run(tmp_path, "--meeting-id", "m_001", "--research", "Grace Liu, Harbourview Health",
                 "--research", "Jane Doe, Acme Corp", searcher=search)
     assert rc == 0
-    assert any("Compliance Manager" in q and "Grace Liu" in q for q in search.calls)
-    assert any("harbourviewhealth.com" in q for q in search.calls)
-    assert any('"Jane Doe" "Acme Corp"' in q for q in search.calls)
-    assert len(search.calls) <= 10
+    assert any("Compliance Manager" in q and "Grace Liu" in q for q in search.person_calls)
+    assert any("harbourviewhealth.com" in q for q in search.person_calls)
+    assert any('"Jane Doe" "Acme Corp"' in q for q in search.person_calls)
+    assert len(search.person_calls) <= 10
     section = brief(tmp_path, "m_001").split("## Background on new attendees")[1].split("## History")[0]
     assert "**Grace Liu** (Harbourview Health), researched on request: no public results found." in section
     assert "**Jane Doe** (Acme Corp), researched on request" in section
 
 
 def test_research_flag_needs_name_and_company(tmp_path):
-    import pytest
-
     with pytest.raises(SystemExit) as exc:
         run(tmp_path, "--meeting-id", "m_001", "--research", "Grace Liu")
     assert exc.value.code == 2
@@ -398,7 +419,7 @@ def test_research_flag_needs_name_and_company(tmp_path):
 def test_missing_tavily_key_errors_only_when_a_search_is_needed(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     monkeypatch.setattr(cli, "load_dotenv", lambda *a, **k: None)
-    assert cli.main(["prep", "--meeting-id", "m_001", "--output-dir", str(tmp_path)], llm=FakeLLM()) == 0
+    assert cli.main(["prep", "--meeting-id", "m_005", "--output-dir", str(tmp_path)], llm=FakeLLM()) == 0
     rc = cli.main(["prep", "--meeting-id", "m_002", "--output-dir", str(tmp_path)], llm=FakeLLM())
     assert rc == 2
     err = capsys.readouterr().err
@@ -412,3 +433,150 @@ def test_search_failure_is_a_clear_error(tmp_path, capsys):
     rc, _ = run(tmp_path, "--meeting-id", "m_002", searcher=FakeSearch(SearchError("Tavily plan limit reached (432)")))
     assert rc == 1
     assert "Tavily plan limit reached" in capsys.readouterr().err
+
+
+# ---------- company developments (session 4) ----------
+
+HV_CDO = "https://www.harbourviewhealth.com/newsroom/chief-digital-officer"
+HV_BAYSIDE = "https://www.fiercehealthcare.com/providers/harbourview-health-completes-bayside-acquisition"
+HV_HIE = "https://www.businesswire.com/news/home/20251110005123/en/harbourview-health-hie-partnership"
+DATED_LINE = re.compile(r"^- \d{4}-\d{2}-\d{2} · .+ \[\d+\]$")
+HV_NEWS = {
+    "N3": {"summary": "Signed a data-exchange partnership with the state HIE.",
+           "why": "Touches the integration requirements on the agenda.", "relevance": 3},
+    "N1": {"summary": "Named a first Chief Digital Officer.", "why": "A new sign-off on data spend.", "relevance": 2},
+    "N2": {"summary": "Closed its Bayside Clinics acquisition.", "why": "More sites could mean more seats.",
+           "relevance": 2},
+}
+
+
+def with_news(news):
+    return FakeLLM(final({**SYNTHESIS, "news": news}))
+
+
+def snapshot(text):
+    return text.split("## Company snapshot")[1].split("## Who's in the room")[0]
+
+
+def news_lines(text):
+    return [line for line in snapshot(text).splitlines() if line.startswith("- ")]
+
+
+def dates(lines):
+    return [line.split(" · ")[0][2:] for line in lines]
+
+
+def test_company_with_three_recent_items_shows_them_ranked_with_date_and_link(tmp_path):
+    rc, _ = run(tmp_path, "--meeting-id", "m_001", llm=with_news(HV_NEWS))
+    assert rc == 0
+    text = brief(tmp_path, "m_001")
+    order = [text.index(h) for h in ("## Meeting at a glance", "## Company snapshot", "## Who's in the room")]
+    assert order == sorted(order)
+    section = snapshot(text)
+    assert "**Harbourview Health** (harbourviewhealth.com)" in section
+    assert "Public web sources, last 90 days" in section
+    lines = news_lines(text)
+    assert len(lines) == 3 and all(DATED_LINE.match(line) for line in lines)
+    assert dates(lines) == ["2025-11-10", "2026-01-08", "2025-12-02"]  # relevance 3, then 2s newest first
+    assert "state HIE" in lines[0] and "_Why it matters:_ Touches the integration" in lines[0]
+    assert [line[-3:] for line in lines] == ["[1]", "[2]", "[3]"]
+    sources = text.split("## Sources")[1]
+    assert f"]({HV_HIE}), 2025-11-10" in sources and sources.index(HV_HIE) < sources.index(HV_CDO)
+    assert "[Harbourview Health completes acquisition of Bayside Clinics]" in sources
+    urls = set(URL_RE.findall(text))
+    assert urls == {HV_CDO, HV_BAYSIDE, HV_HIE} and urls <= fixture_urls()
+    for dropped in ("FY2024", "Careers at", "Harbourview Capital"):
+        assert dropped not in text
+    assert "unconfirmed" not in section
+    assert len(text.split()) < 700
+
+
+def test_without_model_notes_items_are_newest_first_with_title_as_summary(tmp_path):
+    run(tmp_path, "--meeting-id", "m_001")
+    lines = news_lines(brief(tmp_path, "m_001"))
+    assert dates(lines) == ["2026-01-08", "2025-12-02", "2025-11-10"]
+    assert "Harbourview Health names Dr. Mei Chen Chief Digital Officer" in lines[0]
+
+
+def test_model_can_drop_items_but_cannot_add_items_or_urls(tmp_path):
+    news = {"N1": {"relevance": 0},
+            "N2": {"summary": "See https://evil.example.com/x", "why": "www.evil.example.com", "relevance": 2},
+            "N9": {"summary": "Invented item.", "relevance": 3}}
+    run(tmp_path, "--meeting-id", "m_001", llm=with_news(news))
+    text = brief(tmp_path, "m_001")
+    lines = news_lines(text)
+    assert dates(lines) == ["2025-12-02", "2025-11-10"]
+    assert "Harbourview Health completes acquisition of Bayside Clinics [1]" == lines[0].split(" · ")[1]
+    assert "evil.example.com" not in text and "Invented item" not in text and HV_CDO not in text
+
+
+def test_company_with_nothing_in_window_says_no_notable_developments(tmp_path):
+    run(tmp_path, "--meeting-id", "m_003")
+    text = brief(tmp_path, "m_003")
+    section = snapshot(text)
+    assert "**Solvane Energy** (solvane-energy.com)" in section
+    assert news_lines(text) == ["- No notable developments found in the last 90 days."]
+    assert "solar" not in text.lower()
+
+
+def test_news_days_flag_narrows_the_window_and_never_falls_back(tmp_path):
+    search = FakeSearch()
+    run(tmp_path, "--meeting-id", "m_001", "--news-days", "30", searcher=search)
+    assert {r["start_date"] for r in search.news_calls} == {"2025-12-16"}
+    text = brief(tmp_path, "m_001")
+    assert dates(news_lines(text)) == ["2026-01-08"]
+    assert "last 30 days" in snapshot(text)
+    run(tmp_path, "--meeting-id", "m_003", "--news-days", "30")
+    assert "No notable developments found in the last 30 days." in brief(tmp_path, "m_003")
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "soon"])
+def test_news_days_must_be_a_positive_whole_number(tmp_path, value):
+    with pytest.raises(SystemExit) as exc:
+        run(tmp_path, "--meeting-id", "m_001", "--news-days", value)
+    assert exc.value.code == 2
+
+
+def test_two_attendees_from_one_company_trigger_one_search_pass(tmp_path):
+    for meeting_id, company, domain in (("m_001", "Harbourview Health", "harbourviewhealth.com"),
+                                        ("m_004", "Kestrel Freight", "kestrelfreight.com")):
+        search = FakeSearch()
+        run(tmp_path, "--meeting-id", meeting_id, searcher=search)
+        assert 3 <= len(search.news_calls) <= 5
+        assert all(company in r["query"] for r in search.news_calls)
+        assert any(domain in r["query"] for r in search.news_calls)
+
+
+def test_own_company_triggers_no_search(tmp_path):
+    for meeting_id in ("m_001", "m_002", "m_003", "m_004", "m_005"):
+        search = FakeSearch()
+        run(tmp_path, "--meeting-id", meeting_id, searcher=search)
+        assert not any("lumora" in r["query"].lower() for r in search.requests)
+    assert search.requests == []  # m_005 is internal-only
+    assert "## Company snapshot" not in brief(tmp_path, "m_005")
+
+
+def test_rumor_and_weak_single_source_items_are_labeled_unconfirmed(tmp_path):
+    run(tmp_path, "--meeting-id", "m_004", llm=with_news({"N2": {"unconfirmed": False, "relevance": 3}}))
+    text = brief(tmp_path, "m_004")
+    lines = dict(zip(dates(news_lines(text)), news_lines(text)))
+    assert "_(unconfirmed)_" in lines["2025-12-29"]  # rumor framing; the model can't clear the label
+    assert "_(unconfirmed)_" in lines["2025-12-10"]  # single weak source
+    assert "_(unconfirmed)_" not in lines["2026-01-06"]  # company's own newsroom
+    risks = text.split("## Risks and watch-outs")[1]
+    assert risks.count("Unconfirmed report on Kestrel Freight") == 2
+    assert "regional carrier. Don't present it as fact." in risks
+
+
+def test_model_sees_company_news_as_tagged_data_without_urls(tmp_path):
+    _, llm = run(tmp_path, "--meeting-id", "m_001")
+    prompt = llm.sent[0][0]
+    web = json.loads(prompt.split("<web_results>")[1].split("</web_results>")[0])
+    (company,) = web["companies"]
+    assert company["company"] == "Harbourview Health"
+    assert [i["id"] for i in company["items"]] == ["N1", "N2", "N3"]
+    assert {i["source_type"] for i in company["items"]} == {"primary", "established"}
+    assert "[link removed]" in company["items"][0]["snippet"]
+    assert not URL_RE.search(prompt) and "www." not in prompt
+    assert "FY2024" not in prompt and "Harbourview Capital" not in prompt
+    assert '"news"' in llm.system and "rumor" in llm.system
