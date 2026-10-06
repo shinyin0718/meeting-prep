@@ -258,3 +258,8 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 - The brief is turned into HTML on the server with markdown-it in `commonmark` mode with `html: False`, so raw HTML from model, web or file text is escaped and `javascript:` links are refused. Links open in a new tab.
 - Listens on 127.0.0.1 only (no login). `web.main` warns when `OWN_COMPANY_DOMAINS` isn't set, since otherwise colleagues show as external.
 - Gemini requests now have a timeout (`GEMINI_TIMEOUT_SECONDS`, default 90). A timeout isn't retried, since it may already count against the free quota, and instead fails with "Gemini didn't answer in time". Before this, one stuck request left the page spinning for more than 5 minutes. The page also shows elapsed time and gives up after 6 minutes.
+
+### Live results (2026-10-06)
+
+- Through the page, m_001 plus an uploaded `renewal_notes.txt`, with `GEMINI_MODEL=gemini-3.5-flash` and real Tavily: **works**. The brief is 620 words (under 700), every section is present, and both file facts are tagged `renewal_notes.txt`. Harbourview Health is fictional, so the snapshot reads "No notable developments". This also covers the pending "live m_001 after the one-page guard" check.
+- The first attempt with gemini-3.7-flash hung for more than 5 minutes and then hit that model's daily limit. That led to the request timeout above.
