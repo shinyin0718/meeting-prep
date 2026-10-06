@@ -87,3 +87,28 @@ def test_parse_research_request():
     for bad in ("Jane Doe", ", Acme", "Jane,"):
         with pytest.raises(ValueError, match="Name, Company"):
             parse_research_request(bad)
+
+
+def test_start_date_turns_on_tavily_date_filter():
+    requests = []
+    asyncio.run(client(requests=requests).search("q", topic="news", start_date="2025-10-17"))
+    asyncio.run(client(requests=requests).search("q"))
+    with_window, without = (json.loads(r.content) for r in requests)
+    assert with_window["start_date"] == "2025-10-17" and with_window["filter_by_published_date"] is True
+    assert with_window["topic"] == "news"
+    assert "start_date" not in without and "filter_by_published_date" not in without
+
+
+def test_company_match_source_type_and_rumor_detection():
+    from meeting_prep.news import Company, is_about, is_rumor, source_type
+
+    c = Company("Harbourview Health", "harbourviewhealth.com")
+    assert is_about(c, SearchResult("https://x.example.com/a", "Harbourview Health opens a clinic"))
+    assert is_about(c, SearchResult("https://www.harbourviewhealth.com/newsroom/a", "Opening day"))
+    assert not is_about(c, SearchResult("https://www.reuters.com/a", "Harbourview Capital closes fund"))
+    assert source_type(c, SearchResult("https://www.harbourviewhealth.com/n", "t")) == "primary"
+    assert source_type(c, SearchResult("https://www.businesswire.com/n", "t")) == "primary"
+    assert source_type(c, SearchResult("https://www.reuters.com/n", "t")) == "established"
+    assert source_type(c, SearchResult("https://notreuters.com/n", "t")) == "other"
+    assert is_rumor(SearchResult("u", "Kestrel Freight reportedly in talks to buy a carrier"))
+    assert not is_rumor(SearchResult("u", "Kestrel Freight launches a tracking API"))

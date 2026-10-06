@@ -11,6 +11,8 @@ SHOWN_HISTORY = 3
 TAG = "_(internal record)_"
 UNCONFIRMED = "couldn't confirm identity"
 URL_RE = re.compile(r"https?://|www\.", re.IGNORECASE)
+NO_NEWS = "No notable developments found in the last {days} days."
+MAX_NEWS_ITEMS = 5
 
 
 def _when(meeting: dict) -> str:
@@ -74,10 +76,49 @@ def _background(research: list[dict], synthesis: dict[str, Any], cites: dict[str
     return out
 
 
-def _sources(research: list[dict], cites: dict[str, int]) -> list[str]:
+def _news_rows(entry: dict, notes: dict[str, Any]) -> list[dict]:
+    """In-window items minus those the model rated 0, ranked by relevance, then newest first; at most 5."""
+    rows = []
+    for item in sorted(entry["items"], key=lambda i: i["date"], reverse=True):
+        note = notes.get(item["id"])
+        note = note if isinstance(note, dict) else {}
+        try:
+            relevance = int(note.get("relevance", 1))
+        except (TypeError, ValueError):
+            relevance = 1
+        if relevance <= 0:
+            continue
+        summary, why = _clean(note.get("summary")), _clean(note.get("why"))
+        rows.append({**item, "relevance": relevance,
+                     "summary": summary if summary and not URL_RE.search(summary) else _clean(item["title"]),
+                     "why": "" if URL_RE.search(why) else why,
+                     "unconfirmed": item["unconfirmed"] or note.get("unconfirmed") is True})
+    rows.sort(key=lambda r: -r["relevance"])  # stable, so newest first within a relevance level
+    return rows[:MAX_NEWS_ITEMS]
+
+
+def _snapshot(news: list[dict], rows: dict[str, list[dict]], cites: dict[str, int]) -> list[str]:
+    if not news:
+        return []
+    days = news[0]["days"]
+    out = ["## Company snapshot", "", f"_Public web sources, last {days} days; ranked by relevance, then date._", ""]
+    for entry in news:
+        out += [f"**{entry['company']}** ({entry['domain']})", ""]
+        if not rows[entry["domain"]]:
+            out.append(f"- {NO_NEWS.format(days=days)}")
+        for r in rows[entry["domain"]]:
+            label = "_(unconfirmed)_ " if r["unconfirmed"] else ""
+            why = f" _Why it matters:_ {r['why']}" if r["why"] else ""
+            out.append(f"- {r['date']} · {label}{r['summary']}{why} [{cites.setdefault(r['id'], len(cites) + 1)}]")
+        out.append("")
+    return out
+
+
+def _sources(research: list[dict], news: list[dict], cites: dict[str, int]) -> list[str]:
     if not cites:
         return []
     by_id = {s["id"]: s for entry in research for s in entry["sources"]}
+    by_id |= {i["id"]: i for entry in news for i in entry["items"]}
     out = ["## Sources", ""]
     for source_id, n in sorted(cites.items(), key=lambda kv: kv[1]):
         s = by_id[source_id]
@@ -92,6 +133,9 @@ def render_brief(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
     names = {p["profile"]["email"]: p["profile"]["name"] for p in people}
     relationships = {k.lower(): v for k, v in (synthesis.get("relationships") or {}).items()}
     research = context.get("research") or []
+    news = context.get("news") or []
+    notes = {str(k).strip().upper(): v for k, v in (synthesis.get("news") or {}).items()}
+    rows = {entry["domain"]: _news_rows(entry, notes) for entry in news}
     cites: dict[str, int] = {}
     out: list[str] = [f"# Prep brief: {meeting['title']}", "", f"{_when(meeting)} · meeting `{meeting['id']}`", ""]
 
@@ -104,6 +148,8 @@ def render_brief(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
     else:
         out.append(f"- **Agenda:** no agenda on record {TAG}.")
     out.append("")
+
+    out += _snapshot(news, rows, cites)
 
     out += ["## Who's in the room", ""]
     for person in people:
@@ -153,7 +199,9 @@ def render_brief(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
                    for e in research if e["status"] == "unconfirmed"]
     risks = [line for line in _items(synthesis.get("risks", []), lambda e: (
         f"- {_clean(e.get('text'))}{_based_on(e)}" if _clean(e.get("text")) else "")) if line != "- No record."]
+    unconfirmed += [f"- Unconfirmed report on {e['company']}: {r['summary'].rstrip('.')}. Don't present it as fact. "
+                    "_(based on: web search)_" for e in news for r in rows[e["domain"]] if r["unconfirmed"]]
     out += unconfirmed + risks or ["- No record."]
     out.append("")
-    out += _sources(research, cites)
+    out += _sources(research, news, cites)
     return "\n".join(out)

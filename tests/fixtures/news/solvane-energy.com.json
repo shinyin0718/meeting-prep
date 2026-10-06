@@ -1,0 +1,13 @@
+{
+  "company": "Solvane Energy",
+  "query": "\"Solvane Energy\" solvane-energy.com announcement OR press release",
+  "results": [
+    {
+      "title": "Solvane Energy commissions its second solar farm",
+      "url": "https://www.solvane-energy.com/news/second-solar-farm",
+      "content": "Solvane Energy's 80 MW plant began delivering power to the grid this week.",
+      "score": 0.81,
+      "published_date": "2025-08-01"
+    }
+  ]
+}

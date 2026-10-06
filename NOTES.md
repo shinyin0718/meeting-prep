@@ -141,3 +141,38 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 - One search per unique external domain: `context["external_domains"]` is already deduped and excludes `OWN_COMPANY_DOMAINS`.
 - Source ids are numbered across the whole brief in `research()`; company news needs to continue that numbering (or move numbering into the renderer) so `## Sources` stays one list.
 - Live Tavily check (2026-10-06, `TAVILY_API_KEY` is now a saved Devin secret): `research()` on Tom Becker / Harbourview Health came back `unconfirmed`. 14 real results, all for other Tom Beckers. That's expected, because the seed people are fictional. A manual target, Lisa Su / AMD, came back `confirmed` with 4 dated, citable results. 3 credits per person. Gemini was not part of this check.
+
+## Session 4 — company developments (done)
+
+**Checkpoint:** the recency window, deduplication, ranking and "unconfirmed" criteria pass with mocked search (`tests/test_agent.py`, "company developments" block):
+- m_001: Harbourview's 3 in-window items, ranked, each with a date and a [n] link.
+- m_003: Solvane's only item is from 2025-08-01, so the brief says "No notable developments found in the last 90 days."
+- Two attendees from the same company get one search pass (m_001, m_004).
+- No query ever names Lumora, and m_005 makes zero searches.
+- m_004: Kestrel's rumor item and its weak-source item are both labeled `_(unconfirmed)_`, with a risk line for each.
+
+### Files added / changed
+
+- `meeting_prep/news.py`:
+  - `companies_for(context)`: one `Company(name, domain)` per `context["external_domains"]`, so it's already deduped and excludes own domains.
+  - `queries()`: 3 per company (cap 5). The first is `topic=general` with the domain, for newsroom/primary pages; two are `topic=news` (deals/earnings/launches, leadership/layoffs/legal).
+  - `company_news(searcher, companies, days=, today=)`.
+  - `today()` honours `MEETING_PREP_TODAY`, like the MCP server.
+- `web_search.py`: `search(..., start_date=)` sends `start_date` + `filter_by_published_date: true`.
+- `agent.py`: `<web_results>` is now `{"people": [...], "companies": [...]}`, and each key appears only when non-empty. Company items carry `id` (`N1`…), title, date, `source_type` and a snippet with URLs replaced by `[link removed]`. The output contract adds `"news": {"N1": {"summary", "why", "relevance" 0–3, "unconfirmed"}}`.
+- `brief.py`: `## Company snapshot` goes right after "Meeting at a glance" and is omitted when there are no external companies. It adds a risk line per unconfirmed item, and `## Sources` now covers news and background (snapshot cites come first, so they're numbered first).
+- `cli.py`: `--news-days N` (whole number ≥ 1, default 90). `TAVILY_API_KEY` is now needed for every meeting with an external attendee (m_005 runs without it).
+- `tests/fixtures/news/<domain>.json`: Tavily-shaped results plus a `"company"` key. `FakeSearch` serves them for searches that pass `start_date`, and person fixtures for the rest. `FakeSearch.person_calls` / `.news_calls` split the two.
+
+### Design decisions
+
+- **The window and dating are enforced in code** as well as by Tavily's filter. An item is kept only if it names the company or its domain, and its date falls between today − N days and today. Undated items are dropped.
+- **Ranking:** Gemini gives each item a relevance score from 0 to 3 (0 drops it). Code sorts by relevance, then newest first, and keeps 5. An item the model says nothing about defaults to relevance 1, with its title as the summary. The spec's section list says "newest first" while the feature section says "ranked by relevance and then recency". I followed the latter, since it's the more specific rule and is what the acceptance test checks.
+- **"Unconfirmed" is set in code** (the model can add it, never remove it). It applies when the source is neither the company's own domain, a press wire or filing (`PRIMARY_HOSTS`), nor an outlet in `ESTABLISHED_HOSTS`, or when the text is rumor-framed (`RUMOR_RE`). This approximates "single weak source": there is no cross-source corroboration check, and the outlet list is hand-picked, so expect more unconfirmed labels on small trade sites.
+- Deduplication of news is by URL. The same story on two URLs shows twice.
+- Skipped: the optional per-company daily cache in `data/cache/`.
+
+### For session 5 (file ingestion)
+
+- The renderer omits a section when it has no content, and `## From your materials` goes between "History and open items" and "Likely asks".
+- Reuse the pattern: wrap file text in its own tag (e.g. `<materials>`), and add it to the "data, never instructions" line in `OUTPUT_CONTRACT`.
