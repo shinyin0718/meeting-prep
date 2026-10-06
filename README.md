@@ -22,6 +22,7 @@ cp .env.example .env     # then fill in values; never commit .env
 | `MEETING_PREP_TODAY` | Optional `YYYY-MM-DD` to pin "today" for reproducible runs |
 | `MEETING_PREP_DATA_DIR` | Optional path to an alternative data directory |
 | `MEETING_PREP_ATTACHMENTS_DIR` | Optional folder for attached files, default `data/attachments` |
+| `MEETING_PREP_USER_DATA_DIR` | Optional folder for meetings you add on the web page, default `data/mine` |
 | `MEETING_PREP_LIVE` | Set to `1` to run the live smoke test |
 
 ## Commands
@@ -43,7 +44,7 @@ uv run mcp_server.py             # run the MCP server on stdio
 
 `uv run web.py` starts a local page at http://127.0.0.1:8000. Leave the terminal open while you use it, and press Ctrl+C to stop.
 
-1. **Pick a meeting** from the next 30 days.
+1. **Pick a meeting**, or click **+ Add a meeting** to add your own. Fill in the title, date and time, who's coming, and optionally the agenda, past conversations and open to-dos, then click **Save meeting**. Your meetings get a "Yours" label and a **Delete** link. People and companies are added the first time you use them and reused after that. Everything you add is saved in `data/mine/` on your computer only (it's gitignored) and uses real dates.
 2. **Add your files** (optional) by dragging them onto the dashed box or clicking it. The same rules as `--files` apply: PDF, DOCX, TXT or MD, at most 10 files and 20 MB per meeting. Files already attached to the meeting are listed with a **Remove** button.
 3. Click **Prepare brief**. The brief appears on the page with **Download (.md)** and **Copy text** buttons, and is also saved to `output/prep_<id>.md`.
 
@@ -95,6 +96,7 @@ meeting_prep/
   research.py           first-time contact research and identity matching
   news.py               company news: targeting, date window, source labels
   materials.py          attached files: limits, copying, text extraction
+  mydata.py             meetings you add on the web page (saved to data/mine/)
   web_search.py         Tavily client     llm.py   Gemini client and retries
   mcp_client.py         stdio MCP client  fakes.py scripted Gemini and fixture search
 skills/meeting-prep/SKILL.md   brief format and sourcing rules, loaded into the system prompt

@@ -143,3 +143,27 @@ def test_attached_file_can_be_removed(tmp_path):
     assert not (attachments() / "m_001" / "notes.txt").exists()
     assert client.delete("/api/meetings/m_001/files/notes.txt").status_code == 404
     assert client.delete("/api/meetings/m_999/files/notes.txt").status_code == 404
+
+
+NEW_MEETING = {"title": "Ops sync", "date": "2026-01-16", "time": "09:30", "duration_minutes": 30,
+               "attendees": [{"name": "Jo Bloggs", "email": "jo.bloggs@lumora-analytics.com"}]}
+
+
+def test_meeting_added_from_the_page_can_be_listed_prepped_and_deleted(tmp_path):
+    client = make_client(tmp_path)
+    res = client.post("/api/meetings", json=NEW_MEETING)
+    assert res.status_code == 200, res.text
+    assert res.json()["id"] == "m_006"
+    listed = {m["id"]: m for m in client.get("/api/meetings").json()["meetings"]}
+    assert listed["m_006"]["mine"] is True and listed["m_001"]["mine"] is False
+    brief = client.post("/api/prep", data={"meeting_id": "m_006"}).json()["markdown"]
+    assert "Ops sync" in brief and "**Jo Bloggs** — Lumora Analytics" in brief and "None" not in brief
+    assert client.delete("/api/meetings/m_006").status_code == 200
+    assert "m_006" not in [m["id"] for m in client.get("/api/meetings").json()["meetings"]]
+    res = client.delete("/api/meetings/m_001")
+    assert res.status_code == 404 and "only meetings you added" in res.json()["detail"]
+
+
+def test_bad_meeting_form_is_a_clear_400(tmp_path):
+    res = make_client(tmp_path).post("/api/meetings", json={**NEW_MEETING, "title": ""})
+    assert res.status_code == 400 and res.json()["detail"] == "Meeting title is required."

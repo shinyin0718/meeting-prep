@@ -46,16 +46,67 @@
   article.brief h2 { font-size: 17px; margin-top: 22px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
   article.brief a { color: var(--accent); word-break: break-word; }
   article.brief em { color: var(--muted); }
+  .badge.mine { background: #dcfce7; color: #166534; }
+  .meeting-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .add-toggle { margin-top: 12px; }
+  .panel { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 12px; background: #fcfcfd; }
+  .panel h3 { font-size: 15px; margin: 18px 0 6px; }
+  .panel h3:first-child { margin-top: 0; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+  .grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; }
+  .grid label, .stack label { display: flex; flex-direction: column; font-size: 13px; color: #374151; gap: 3px; }
+  .panel input, .panel textarea, .panel select { font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; min-width: 0; }
+  .panel textarea { width: 100%; min-height: 70px; }
+  .form-row { display: grid; gap: 8px; align-items: center; margin-bottom: 8px; }
+  #f-attendees .form-row { grid-template-columns: 1.2fr 1.5fr 1.2fr 1.2fr auto; }
+  #f-history .form-row { grid-template-columns: 1.2fr 1fr 0.8fr 2.5fr auto; }
+  #f-todos .form-row { grid-template-columns: 2.2fr 1.2fr 1.2fr 1fr auto; }
+  .add-row { font: inherit; font-size: 14px; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; }
+  .form-actions { display: flex; gap: 10px; margin-top: 18px; align-items: center; }
+  .ok { color: #166534; }
+  @media (max-width: 700px) { .grid, #f-attendees .form-row, #f-history .form-row, #f-todos .form-row { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <main>
   <h1>Meeting prep</h1>
-  <p class="lead">Pick a meeting, add any files you have, and get a one-page brief to read before you walk in.</p>
+  <p class="lead">Pick a meeting (or add your own), add any files you have, and get a one-page brief to read before you walk in.</p>
 
   <section class="step">
     <h2><span class="num">1</span> Pick a meeting</h2>
     <div id="meetings" class="meetings"><p class="status"><span class="spinner"></span> Loading meetings…</p></div>
+    <button id="add-toggle" class="secondary add-toggle" type="button">+ Add a meeting</button>
+    <span id="add-done" class="ok hidden"></span>
+    <form id="add-form" class="panel hidden" novalidate>
+      <h3>Meeting</h3>
+      <div class="grid">
+        <label>Title <input id="f-title" placeholder="e.g. Acme: renewal check-in"></label>
+        <label>Date <input id="f-date" type="date"></label>
+        <label>Start time <input id="f-time" type="time" value="10:00"></label>
+        <label>Length
+          <select id="f-duration"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option></select>
+        </label>
+      </div>
+      <h3>Who's coming</h3>
+      <p class="hint">Include yourself or colleagues if you like. Company is only needed the first time someone from that company is added.</p>
+      <div id="f-attendees"></div>
+      <button type="button" class="add-row" data-add="attendee">+ Add person</button>
+      <h3>Agenda <span class="optional">(optional)</span></h3>
+      <textarea id="f-agenda" placeholder="One item per line"></textarea>
+      <h3>Past conversations <span class="optional">(optional)</span></h3>
+      <p class="hint">Earlier calls, emails or meetings with these people. The brief uses them for history and talking points.</p>
+      <div id="f-history"></div>
+      <button type="button" class="add-row" data-add="history">+ Add past conversation</button>
+      <h3>Open to-dos <span class="optional">(optional)</span></h3>
+      <div id="f-todos"></div>
+      <button type="button" class="add-row" data-add="todo">+ Add to-do</button>
+      <div id="form-error" class="error hidden" role="alert"></div>
+      <div class="form-actions">
+        <button id="f-save" class="primary" type="submit">Save meeting</button>
+        <button id="f-cancel" class="secondary" type="button">Cancel</button>
+        <span class="hint" style="margin:0">Saved on this computer only (data/mine/), never uploaded to GitHub.</span>
+      </div>
+    </form>
   </section>
 
   <section class="step">
@@ -124,15 +175,29 @@ function current() { return state.meetings.find((m) => m.id === state.selected);
 function renderMeetings() {
   const box = $("meetings");
   box.replaceChildren();
-  if (!state.meetings.length) { box.append(el("p", { className: "status", textContent: "No meetings in the next 30 days." })); return; }
+  if (!state.meetings.length) { box.append(el("p", { className: "status", textContent: "No upcoming meetings yet. Click + Add a meeting below." })); return; }
   for (const m of state.meetings) {
     const people = m.attendees.map((a) => a.is_internal ? a.name : `${a.name} (${a.company || "external"})`).join(", ");
     const title = el("div", { className: "title", textContent: m.title });
+    if (m.mine) title.append(el("span", { className: "badge mine", textContent: "Yours" }));
     if (m.files.length) title.append(el("span", { className: "badge", textContent: `${m.files.length} file${m.files.length > 1 ? "s" : ""}` }));
-    const card = el("button", { className: "meeting" + (m.id === state.selected ? " selected" : ""), type: "button" },
-      title, el("div", { className: "when", textContent: when(m.start) }), el("div", { className: "who", textContent: people }));
+    const head = el("div", { className: "meeting-head" }, title);
+    if (m.mine) {
+      const del = el("button", { className: "link-btn", type: "button", textContent: "Delete" });
+      del.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete "${m.title}"? People and past conversations you added are kept.`)) return;
+        try { await api(`/api/meetings/${encodeURIComponent(m.id)}`, { method: "DELETE" }); await loadMeetings(); }
+        catch (err) { showError(err.message); }
+      };
+      head.append(del);
+    }
+    const card = el("div", { className: "meeting" + (m.id === state.selected ? " selected" : ""), tabIndex: 0, role: "button" },
+      head, el("div", { className: "when", textContent: when(m.start) }), el("div", { className: "who", textContent: people }));
+    card.setAttribute("role", "button");
     card.setAttribute("aria-pressed", m.id === state.selected);
     card.onclick = () => { state.selected = m.id; renderAll(); };
+    card.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); card.click(); } };
     box.append(card);
   }
 }
@@ -239,18 +304,106 @@ $("copy").onclick = async () => {
   $("copy").textContent = "Copied"; setTimeout(() => { $("copy").textContent = "Copy text"; }, 1500);
 };
 
-(async () => {
+async function loadMeetings(selectId) {
   try {
     const body = await api("/api/meetings");
     state.meetings = body.meetings; state.limits = body.limits;
-    state.selected = state.meetings.length ? state.meetings[0].id : null;
+    const keep = selectId || state.selected;
+    state.selected = state.meetings.some((m) => m.id === keep) ? keep : (state.meetings[0] || {}).id || null;
     $("limits-text").textContent = `PDF, Word, text or Markdown · up to ${body.limits.max_files} files, ${mb(body.limits.max_total_bytes)} in total`;
-    $("news-days").value = String(body.limits.default_news_days);
   } catch (e) {
     $("meetings").replaceChildren(); showError(`Couldn't load meetings: ${e.message}`);
   }
   renderAll();
-})();
+}
+
+// "Add a meeting" form
+const field = (name, placeholder, type = "text") => el("input", { name, placeholder, type, ariaLabel: placeholder });
+function personSelect() { const s = el("select", { name: "person", ariaLabel: "Who" }); s.className = "person"; return s; }
+function addRow(listId, cells) {
+  const remove = el("button", { type: "button", className: "link-btn", textContent: "Remove" });
+  const row = el("div", { className: "form-row" }, ...cells, remove);
+  remove.onclick = () => { row.remove(); refreshPeople(); };
+  $(listId).append(row);
+  refreshPeople();
+  return row;
+}
+const rowMakers = {
+  attendee: () => {
+    const email = field("email", "Email", "email");
+    email.oninput = refreshPeople;
+    const name = field("name", "Name");
+    name.oninput = refreshPeople;
+    addRow("f-attendees", [name, email, field("company", "Company"), field("role", "Role (optional)")]);
+  },
+  history: () => {
+    const type = el("select", { name: "type", ariaLabel: "Type" });
+    for (const t of ["call", "email", "meeting"]) type.append(el("option", { value: t, textContent: t }));
+    addRow("f-history", [personSelect(), field("date", "Date", "date"), type, field("summary", "What was discussed")]);
+  },
+  todo: () => addRow("f-todos", [field("description", "What needs doing"), personSelect(),
+    field("owner", "Whose job (e.g. me)"), field("due", "Due date", "date")]),
+};
+function attendeeChoices() {
+  return [...$("f-attendees").querySelectorAll(".form-row")].map((r) => ({
+    email: r.querySelector("[name=email]").value.trim().toLowerCase(),
+    name: r.querySelector("[name=name]").value.trim(),
+  })).filter((a) => a.email);
+}
+function refreshPeople() {
+  const people = attendeeChoices();
+  for (const select of $("add-form").querySelectorAll("select.person")) {
+    const value = select.value;
+    select.replaceChildren(el("option", { value: "", textContent: "With who?" }),
+      ...people.map((p) => el("option", { value: p.email, textContent: p.name || p.email })));
+    select.value = people.some((p) => p.email === value) ? value : "";
+  }
+}
+function collect() {
+  const rows = (id) => [...$(id).querySelectorAll(".form-row")];
+  const val = (row, name) => row.querySelector(`[name=${name}]`).value.trim();
+  return {
+    title: $("f-title").value, date: $("f-date").value, time: $("f-time").value,
+    duration_minutes: Number($("f-duration").value),
+    agenda: $("f-agenda").value.split("\n").map((s) => s.trim()).filter(Boolean),
+    attendees: rows("f-attendees").map((r) => ({ name: val(r, "name"), email: val(r, "email"), company: val(r, "company"), role: val(r, "role") })),
+    history: rows("f-history").map((r) => ({ email: val(r, "person"), date: val(r, "date"), type: val(r, "type"), summary: val(r, "summary") })),
+    open_items: rows("f-todos").map((r) => ({ email: val(r, "person"), description: val(r, "description"), owner: val(r, "owner"), due_date: val(r, "due") })),
+  };
+}
+function resetForm() {
+  $("add-form").reset();
+  for (const id of ["f-attendees", "f-history", "f-todos"]) $(id).replaceChildren();
+  const tomorrow = new Date(Date.now() + 86400000);
+  $("f-date").value = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+  rowMakers.attendee();
+  $("form-error").classList.add("hidden");
+}
+function toggleForm(open) {
+  $("add-form").classList.toggle("hidden", !open);
+  $("add-toggle").classList.toggle("hidden", open);
+  if (open) { $("add-done").classList.add("hidden"); resetForm(); $("f-title").focus(); }
+}
+$("add-toggle").onclick = () => toggleForm(true);
+$("f-cancel").onclick = () => toggleForm(false);
+for (const b of document.querySelectorAll("[data-add]")) b.onclick = () => rowMakers[b.dataset.add]();
+$("add-form").onsubmit = async (e) => {
+  e.preventDefault();
+  $("f-save").disabled = true;
+  try {
+    const meeting = await api("/api/meetings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(collect()) });
+    toggleForm(false);
+    await loadMeetings(meeting.id);
+    $("add-done").textContent = `Saved "${meeting.title}". It's selected above — add files or click Prepare brief.`;
+    $("add-done").classList.remove("hidden");
+  } catch (err) {
+    $("form-error").textContent = err.message; $("form-error").classList.remove("hidden");
+  } finally {
+    $("f-save").disabled = false;
+  }
+};
+
+loadMeetings();
 </script>
 </body>
 </html>

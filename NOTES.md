@@ -263,3 +263,13 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 
 - Through the page, m_001 plus an uploaded `renewal_notes.txt`, with `GEMINI_MODEL=gemini-3.5-flash` and real Tavily: **works**. The brief is 620 words (under 700), every section is present, and both file facts are tagged `renewal_notes.txt`. Harbourview Health is fictional, so the snapshot reads "No notable developments". This also covers the pending "live m_001 after the one-page guard" check.
 - The first attempt with gemini-3.7-flash hung for more than 5 minutes and then hit that model's daily limit. That led to the request timeout above.
+
+## Add-meeting form on the web page (done)
+
+Shin asked how to add their own meetings and chose a web form over editing JSON or connecting a calendar.
+
+- `meeting_prep/mydata.py`: `add_meeting(form)` checks the whole form first (title, a future date and time, 5–600 minutes, attendee emails, company for a new domain, name for a new person, and that past conversations and to-dos belong to an attendee), then writes to `data/mine/{meetings,people,companies,interactions,open_items}.json` atomically. Known people and companies, sample ones included, are reused unchanged. IDs continue after the samples (`m_006`, `i_017`, `o_007`, …). `delete_meeting` only removes meetings you added, and keeps their people and history.
+- `mcp_server._load` returns the sample data plus `data/mine/` (`MEETING_PREP_USER_DATA_DIR`). Your own records use real dates (`start_date`, `date`, `due_date`), while the samples keep their relative offsets. `data/mine/` is gitignored, so personal data never reaches GitHub.
+- Web: `POST /api/meetings` (JSON) and `DELETE /api/meetings/{id}` are added, and `GET /api/meetings` now looks 365 days ahead and marks `mine`. In the page, **+ Add a meeting** opens the form. "Yours" meetings have a **Delete** link, and there's no edit yet (delete and re-add instead).
+- `brief.py` now leaves out an empty role instead of printing "None".
+- `tests/conftest.py` points `MEETING_PREP_USER_DATA_DIR` at a temp folder, so tests never touch `data/mine/`.
