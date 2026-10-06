@@ -150,7 +150,7 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-const state = { meetings: [], selected: null, newFiles: [], limits: null, brief: null };
+const state = { meetings: [], selected: null, newFiles: [], limits: null, brief: null, prepError: "" };
 
 function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
@@ -241,7 +241,7 @@ function renderAll() {
   renderMeetings();
   renderFiles();
   const issue = problems();
-  showError(issue);
+  showError(issue || state.prepError);
   $("go").disabled = !state.selected || !!issue || !$("status").classList.contains("hidden");
 }
 
@@ -265,16 +265,23 @@ $("go").onclick = async () => {
   form.append("meeting_id", state.selected);
   form.append("news_days", $("news-days").value);
   for (const f of state.newFiles) form.append("files", f, f.name);
+  const job = Math.random().toString(36).slice(2);
+  form.append("job", job);
   const started = Date.now();
+  let step = "Preparing your brief";
   const tick = () => {
     const s = Math.round((Date.now() - started) / 1000);
-    $("status-text").textContent = `Preparing your brief… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} (usually 20–60 seconds)`;
+    $("status-text").textContent = `${step}… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   };
   tick();
   const timer = setInterval(tick, 1000);
+  const poll = setInterval(async () => {
+    try { step = (await (await fetch(`/api/progress/${job}`)).json()).step || step; tick(); } catch { /* keep the last step */ }
+  }, 1500);
   const abort = new AbortController();
   const giveUp = setTimeout(() => abort.abort(), 6 * 60 * 1000);
-  $("status").classList.remove("hidden"); showError(""); renderAll();
+  state.prepError = "";
+  $("status").classList.remove("hidden"); renderAll();
   try {
     const body = await api("/api/prep", { method: "POST", body: form, signal: abort.signal });
     state.brief = body; state.newFiles = [];
@@ -286,11 +293,11 @@ $("go").onclick = async () => {
     $("result").classList.remove("hidden");
     $("result").scrollIntoView({ behavior: "smooth" });
   } catch (e) {
-    showError(e.name === "AbortError"
+    state.prepError = (e.name === "AbortError"
       ? "This is taking too long; Gemini may be busy. Try again in a few minutes."
       : e.message);
   } finally {
-    clearInterval(timer); clearTimeout(giveUp);
+    clearInterval(timer); clearInterval(poll); clearTimeout(giveUp);
     $("status").classList.add("hidden"); renderAll();
   }
 };

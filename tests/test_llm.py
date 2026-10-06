@@ -7,6 +7,7 @@ from google.genai import errors, types
 from meeting_prep.llm import (
     GeminiLLM,
     LLMError,
+    ModelSwitchError,
     ToolCall,
     ToolResult,
     function_declarations,
@@ -104,16 +105,17 @@ def test_transient_errors_are_retried_with_backoff():
     assert sleeps == [2, 4]
 
 
-def test_daily_quota_fails_fast_with_clear_message():
+def test_daily_quota_with_no_other_model_fails_fast_with_clear_message(monkeypatch):
+    monkeypatch.setenv("GEMINI_FALLBACK_MODELS", "")
     daily = errors.ClientError(429, {"error": {"code": 429, "message": "quota", "status": "RESOURCE_EXHAUSTED",
         "details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [
             {"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}})
     sleeps = []
     llm, _ = make([daily], sleeps)
-    with pytest.raises(LLMError, match="daily request limit for gemini-test") as err:
+    with pytest.raises(LLMError, match="Every free Gemini model") as err:
         asyncio.run(llm.start_chat("s", TOOLS).send("hi"))
     assert sleeps == []
-    assert "e.g. gemini-3.8-flash" in str(err.value)
+    assert "gemini-test: out of free requests for today" in str(err.value)
 
 
 def test_non_retryable_error_raises_llm_error():
@@ -149,3 +151,67 @@ def test_real_client_gets_a_request_timeout(monkeypatch):
     monkeypatch.setenv("GEMINI_TIMEOUT_SECONDS", "30")
     GeminiLLM(api_key="k")
     assert captured["http_options"].timeout == 30_000
+
+
+def busy():
+    return errors.ServerError(503, {"error": {"code": 503, "message": "high demand", "status": "UNAVAILABLE"}})
+
+
+def daily():
+    return errors.ClientError(429, {"error": {"code": 429, "message": "quota", "status": "RESOURCE_EXHAUSTED",
+        "details": [{"violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}})
+
+
+async def no_sleep(_seconds):
+    return None
+
+
+def test_model_chain_defaults_and_override(monkeypatch):
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_FALLBACK_MODELS", raising=False)
+    assert GeminiLLM(client=object()).models == ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash",
+                                                 "gemini-3.5-flash", "gemini-flash-latest",
+                                                 "gemini-3.5-flash-lite", "gemini-flash-lite-latest"]
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.6-flash")
+    monkeypatch.setenv("GEMINI_FALLBACK_MODELS", " a , gemini-3.6-flash,,b")
+    assert GeminiLLM(client=object()).models == ["gemini-3.6-flash", "a", "b"]
+
+
+def test_busy_model_switches_to_the_next_one(monkeypatch):
+    monkeypatch.setenv("GEMINI_FALLBACK_MODELS", "backup-a,backup-b")
+    sleeps, notices = [], []
+
+    async def sleep(seconds):
+        sleeps.append(seconds)
+
+    client = FakeClient([busy(), busy(), busy(), response(types.Part(text="{}"))])
+    llm = GeminiLLM(model="gemini-test", client=client, sleep=sleep, notice=notices.append)
+    assert asyncio.run(llm.start_chat("s", TOOLS).send("hi")).text == "{}"
+    assert [r["model"] for r in client.aio.models.requests] == ["gemini-test"] * 3 + ["backup-a"]
+    assert sleeps == [2, 4] and notices == ["Gemini gemini-test is busy; trying backup-a"]
+
+
+def test_daily_quota_switches_at_once_and_is_skipped_for_the_rest_of_the_day(monkeypatch):
+    monkeypatch.setenv("GEMINI_FALLBACK_MODELS", "backup-a")
+    client = FakeClient([daily(), response(types.Part(text="{}"))])
+    llm = GeminiLLM(model="gemini-test", client=client, sleep=no_sleep)
+    assert asyncio.run(llm.start_chat("s", TOOLS).send("hi")).text == "{}"
+    assert [r["model"] for r in client.aio.models.requests] == ["gemini-test", "backup-a"]
+    assert GeminiLLM(model="gemini-test", client=object()).model == "backup-a"
+
+
+def test_every_model_busy_gives_one_clear_error(monkeypatch):
+    monkeypatch.setenv("GEMINI_FALLBACK_MODELS", "backup-a")
+    llm = GeminiLLM(model="gemini-test", client=FakeClient([daily(), busy(), busy(), busy()]), sleep=no_sleep)
+    with pytest.raises(LLMError, match="gemini-test: out of free requests for today; backup-a: busy"):
+        asyncio.run(llm.start_chat("s", TOOLS).send("hi"))
+
+
+def test_switch_mid_conversation_asks_the_caller_to_start_again(monkeypatch):
+    monkeypatch.setenv("GEMINI_FALLBACK_MODELS", "backup-a")
+    llm, _ = make([response(types.Part(text="first")), daily()])
+    chat = llm.start_chat("s", TOOLS)
+    asyncio.run(chat.send("hi"))
+    with pytest.raises(ModelSwitchError):
+        asyncio.run(chat.send("again"))
+    assert llm.model == "backup-a"

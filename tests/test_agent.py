@@ -569,3 +569,21 @@ def test_model_sees_company_news_as_tagged_data_without_urls(tmp_path):
     assert not URL_RE.search(prompt) and "www." not in prompt
     assert "FY2024" not in prompt and "Harbourview Capital" not in prompt
     assert '"news"' in llm.system and "rumor" in llm.system
+
+
+def test_synthesize_starts_again_when_the_model_switches(monkeypatch):
+    import asyncio
+
+    from meeting_prep import agent
+    from meeting_prep.llm import ModelSwitchError
+
+    calls = []
+
+    async def once(llm, tools, context, max_rounds):
+        calls.append(llm)
+        if len(calls) == 1:
+            raise ModelSwitchError("switched")
+        return {"ok": True}
+
+    monkeypatch.setattr(agent, "_synthesize_once", once)
+    assert asyncio.run(agent.synthesize("llm", None, {})) == {"ok": True} and len(calls) == 2

@@ -6,11 +6,18 @@ import asyncio
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Protocol
 
 DEFAULT_MODEL = "gemini-3.8-flash"
-FALLBACK_MODEL = "gemini-3.6-flash"
-RETRY_DELAYS = (2, 4, 8, 16)
+# Free-tier models are often busy, and each has its own small daily limit, so a request moves on to the
+# next model instead of waiting. Override with GEMINI_FALLBACK_MODELS (comma-separated; empty = none).
+# The "lite" models come last: weaker, but on separate quotas.
+DEFAULT_FALLBACK_MODELS = ("gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest",
+                           "gemini-3.5-flash-lite", "gemini-flash-lite-latest")
+RETRY_DELAYS = (2, 4)  # per model, for "busy" errors, before moving on
+BUSY = "busy"
+OUT_OF_QUOTA = "out of free requests for today"
 DEFAULT_TIMEOUT_SECONDS = 90
 
 
@@ -20,6 +27,26 @@ class MissingAPIKeyError(RuntimeError):
 
 class LLMError(RuntimeError):
     pass
+
+
+class ModelSwitchError(LLMError):
+    """The model changed mid-conversation; the caller should start the conversation again."""
+
+
+# Models whose daily free quota ran out, so later requests the same day skip them. The quota resets at
+# midnight Pacific time; a fixed UTC-8 offset is close enough and needs no time-zone database.
+_out_of_quota: dict[str, date] = {}
+
+
+def _pacific_today() -> date:
+    return datetime.now(timezone(timedelta(hours=-8))).date()
+
+
+def model_chain(model: str | None = None) -> list[str]:
+    first = model or os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_MODEL
+    env = os.environ.get("GEMINI_FALLBACK_MODELS")
+    rest = env.split(",") if env is not None else [DEFAULT_MODEL, *DEFAULT_FALLBACK_MODELS]
+    return list(dict.fromkeys(m.strip() for m in [first, *rest] if m.strip()))
 
 
 @dataclass
@@ -86,7 +113,8 @@ def _is_daily_quota(exc: Exception) -> bool:
 
 class GeminiLLM:
     def __init__(self, api_key: str | None = None, model: str | None = None, client: Any = None,
-                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep):
+                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+                 notice: Callable[[str], None] | None = None):
         if client is None:
             from google import genai
             from google.genai import types
@@ -95,8 +123,26 @@ class GeminiLLM:
             client = genai.Client(api_key=api_key or require_gemini_key(),
                                   http_options=types.HttpOptions(timeout=int(timeout * 1000)))
         self.client = client
-        self.model = model or os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_MODEL
+        chain = model_chain(model)
+        self.models = [m for m in chain if _out_of_quota.get(m) != _pacific_today()] or chain
+        self.model = self.models[0]
         self.sleep = sleep
+        self.notice = notice
+        self.unavailable: list[str] = []
+
+    def switch_model(self, reason: str) -> None:
+        """Moves to the next model in the chain; raises LLMError when there is none left."""
+        if reason == OUT_OF_QUOTA:
+            _out_of_quota[self.model] = _pacific_today()
+        self.unavailable.append(f"{self.model}: {reason}")
+        index = self.models.index(self.model)
+        if index + 1 >= len(self.models):
+            raise LLMError("Every free Gemini model is busy or out of free requests right now ("
+                           + "; ".join(self.unavailable) + "). Try again in a few minutes; "
+                           "daily limits reset at midnight Pacific time.")
+        old, self.model = self.model, self.models[index + 1]
+        if self.notice:
+            self.notice(f"Gemini {old} is {reason}; trying {self.model}")
 
     def start_chat(self, system: str, tools: list[dict]) -> GeminiChat:
         return GeminiChat(self, system, tools)
@@ -170,21 +216,28 @@ class GeminiChat:
         return LLMReply(text=text, tool_calls=calls if allow_tools else [])
 
     async def _generate(self, config):
-        for attempt, delay in enumerate((*RETRY_DELAYS, None)):
+        delays = iter(RETRY_DELAYS)
+        while True:
             try:
                 return await self.llm.client.aio.models.generate_content(
                     model=self.llm.model, contents=self.history, config=config)
             except Exception as exc:
-                if _is_daily_quota(exc):
-                    other = FALLBACK_MODEL if self.llm.model == DEFAULT_MODEL else DEFAULT_MODEL
-                    raise LLMError(
-                        f"Gemini's free daily request limit for {self.llm.model} is used up. Try again tomorrow, "
-                        f"or set GEMINI_MODEL to another model (e.g. {other}); each model has its own limit."
-                    ) from exc
                 if _is_timeout(exc):
                     # Not retried: a stuck request may already count against the small free quota.
                     raise LLMError(f"Gemini didn't answer in time ({exc.__class__.__name__}); it may be busy. "
                                    "Try again in a few minutes.") from exc
-                if delay is None or not _is_retryable(exc):
+                if _is_daily_quota(exc):
+                    reason = OUT_OF_QUOTA
+                elif _is_retryable(exc):
+                    delay = next(delays, None)
+                    if delay is not None:
+                        await self.llm.sleep(delay)
+                        continue
+                    reason = BUSY
+                else:
                     raise LLMError(f"Gemini request failed: {exc}") from exc
-                await self.llm.sleep(delay)
+                self.llm.switch_model(reason)
+                delays = iter(RETRY_DELAYS)
+                if any(getattr(c, "role", None) == "model" for c in self.history):
+                    # A conversation started on one model isn't continued on another: start over.
+                    raise ModelSwitchError(f"Switched to {self.llm.model}; starting the brief again.") from exc

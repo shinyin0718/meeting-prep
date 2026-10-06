@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .llm import LLM, LLMReply, ToolResult
+from .llm import LLM, LLMReply, ModelSwitchError, ToolResult
 from .mcp_client import MCPTools
 
 SKILL_PATH = Path(__file__).resolve().parent.parent / "skills" / "meeting-prep" / "SKILL.md"
@@ -172,6 +172,15 @@ def parse_synthesis(text: str) -> dict[str, Any] | None:
 
 async def synthesize(llm: LLM, tools: MCPTools, context: dict[str, Any],
                      max_rounds: int = MAX_TOOL_ROUNDS) -> dict[str, Any]:
+    """Restarts the conversation when the LLM switched to another model mid-way (see ModelSwitchError)."""
+    while True:
+        try:
+            return await _synthesize_once(llm, tools, context, max_rounds)
+        except ModelSwitchError:
+            continue
+
+
+async def _synthesize_once(llm: LLM, tools: MCPTools, context: dict[str, Any], max_rounds: int) -> dict[str, Any]:
     chat = llm.start_chat(system_prompt(), tools.tools)
     reply: LLMReply = await chat.send(user_prompt(context))
     rounds = 0

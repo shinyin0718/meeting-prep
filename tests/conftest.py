@@ -16,3 +16,10 @@ def frozen_env(monkeypatch, tmp_path):
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_gemini_quota_memory():
+    from meeting_prep import llm
+
+    llm._out_of_quota.clear()

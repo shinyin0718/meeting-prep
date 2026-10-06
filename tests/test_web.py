@@ -172,3 +172,23 @@ def test_bad_meeting_form_is_a_clear_400(tmp_path):
 def test_meetings_include_known_company_names_for_suggestions(tmp_path):
     companies = make_client(tmp_path).get("/api/meetings").json()["companies"]
     assert companies == ["Harbourview Health", "Kestrel Freight", "Lumora Analytics", "Solvane Energy"]
+
+
+def test_run_prep_reports_each_step(tmp_path):
+    import asyncio
+
+    from meeting_prep.cli import run_prep
+
+    steps = []
+    asyncio.run(run_prep("m_002", llm=ScriptedLLM(json_reply(SYNTHESIS)), output_dir=tmp_path,
+                         searcher=FixtureSearch(), progress=steps.append))
+    assert steps[0] == "Reading the meeting and your records" and steps[-1] == "Asking Gemini to write the brief"
+    assert "Searching recent news about Harbourview Health" in steps
+    assert "Looking up new attendees: Tom Becker" in steps
+
+
+def test_progress_endpoint_is_empty_once_the_brief_is_done(tmp_path):
+    client = make_client(tmp_path)
+    assert client.get("/api/progress/nope").json() == {"step": None}
+    assert client.post("/api/prep", data={"meeting_id": "m_001", "job": "abc"}).status_code == 200
+    assert client.get("/api/progress/abc").json() == {"step": None}

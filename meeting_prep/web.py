@@ -103,8 +103,15 @@ def create_app(*, llm_factory: Callable[[], LLM] | None = None,
             raise HTTPException(404, str(exc)) from exc
         return {"deleted": meeting_id}
 
+    steps: dict[str, str] = {}
+
+    @app.get("/api/progress/{job}")
+    def progress(job: str) -> dict[str, str | None]:
+        return {"step": steps.get(job)}
+
     @app.post("/api/prep")
     async def prep(meeting_id: Annotated[str, Form()], news_days: Annotated[int, Form()] = DEFAULT_NEWS_DAYS,
+                   job: Annotated[str | None, Form()] = None,
                    files: Annotated[list[UploadFile] | None, File()] = None) -> dict[str, Any]:
         if news_days < 1:
             raise HTTPException(400, "The news window must be 1 day or more.")
@@ -129,14 +136,19 @@ def create_app(*, llm_factory: Callable[[], LLM] | None = None,
                 paths.append(path)
             try:
                 validate(paths)
-                llm = llm_factory() if llm_factory else GeminiLLM(api_key=require_gemini_key())
+                def report(message: str) -> None:
+                    if job:
+                        steps[job] = message
+
+                llm = llm_factory() if llm_factory else GeminiLLM(api_key=require_gemini_key(), notice=report)
                 try:
-                    brief = await run_prep(meeting_id, llm=llm, output_dir=out, news_days=news_days, files=paths,
+                    brief = await run_prep(meeting_id, llm=llm, output_dir=out, news_days=news_days, files=paths, progress=report,
                                            searcher=searcher_factory() if searcher_factory else None)
                 finally:
                     aclose = getattr(llm, "aclose", None)
                     if aclose is not None:
                         await aclose()
+                    steps.pop(job or "", None)
             except (AttachmentError, MissingAPIKeyError) as exc:
                 raise HTTPException(400, str(exc)) from exc
             except ToolCallError as exc:

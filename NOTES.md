@@ -280,3 +280,12 @@ Shin asked how to add their own meetings and chose a web form over editing JSON 
 - `mydata.real_domain()` returns None for `.invalid` domains. `news.queries`, `research.queries` / `is_match` and the brief's Company snapshot header leave those domains out. Company news is still searched by company name.
 - History and to-dos now point at an attendee by position (`attendee: <index>`); `email` still works. In the page, rows have stable keys, so removing a person doesn't swap who a conversation belongs to.
 - `GET /api/meetings` returns `companies` (known names) for the Company field's suggestions.
+
+## Busy Gemini: model fallback and progress on the web page (done)
+
+Shin reported no brief after 2 minutes. Reproduced: gemini-3.5-flash kept answering 503 "high demand", and after about 75 s of backoff the page showed the error.
+
+- `llm.GeminiLLM` now has a model chain: `GEMINI_MODEL`, then `GEMINI_FALLBACK_MODELS` (default 3.8 → 3.7 → 3.6 → 3.5 → flash-latest → 3.5-flash-lite → flash-lite-latest; lite last because it's weaker but on its own quota. A live gemini-3.5-flash-lite brief for m_001 was 637 words in 7 s with all sections). A busy model gets 2 short retries (2 s, 4 s), and a used-up daily quota moves on at once. Used-up models are remembered for the Pacific day (`_out_of_quota`, cleared by an autouse fixture in tests). When every model fails, one `LLMError` lists them all. Timeouts are still never retried.
+- A switch after the model has already replied raises `ModelSwitchError`. `agent.synthesize` then starts a fresh chat on the new model rather than continuing an old model's conversation.
+- `run_prep(progress=...)` reports steps (reading records, news, attendee lookups, asking Gemini), and `GeminiLLM(notice=...)` reports model switches. The web page sends a random `job` with `/api/prep` and polls `GET /api/progress/{job}` every 1.5 s. The CLI prints switches to stderr.
+- Bug fixed: `renderAll()` called `showError(problems())`, which wiped any prep error the moment the request ended. Shin saw the spinner stop and then nothing. Prep errors now live in `state.prepError`.
