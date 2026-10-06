@@ -113,3 +113,31 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 - **Free-tier quota is 20 requests/day per model** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`). One brief uses at least 2 requests, and the retries count too. Probing burned the 3.8-flash allowance for the day.
 - Fix: a daily-quota 429 now fails fast with a plain message suggesting another `GEMINI_MODEL` instead of retrying (`tests/test_llm.py::test_daily_quota_fails_fast_with_clear_message`).
 - Still open: one successful live brief. Retry when Gemini demand is lower, preferably as a single run (no parallel probes).
+
+## Session 3 — first-time contact research with links (done)
+
+**Checkpoint:** research criteria pass with mocked search (`tests/test_agent.py`, "first-time contact research" block). A known contact triggers no search (m_001: 0 calls), Tom Becker (m_002) gets 3 searches and a cited background, John Smith (m_003) gets "couldn't confirm identity" with no claims, and every URL in the brief is one of the mocked results. `uv run pytest` passes 85 tests; ruff is clean.
+
+### Files added / changed
+
+- `meeting_prep/web_search.py`: `TavilySearch.search(query, max_results, topic)` → `[SearchResult(url, title, content, published_date)]`. Plain `httpx` POST to `https://api.tavily.com/search` with `include_published_date: true` (dates normalized to `YYYY-MM-DD`). 401/429/432/433 map to plain `SearchError` messages. `TAVILY_API_KEY` is checked only on the first search (`MissingAPIKeyError`, exit 2).
+- `meeting_prep/research.py`: `targets_for(context, requests)` (deterministic: `first_meeting` profiles, plus `--research "Name, Company"`), `queries()` (3 per person, cap 5), `is_match()` and `research()`.
+- `agent.py`: a `<web_results>` block in the user prompt and a `background` key in the output contract. The `research` entries are left out of `<internal_records>`.
+- `brief.py`: section 4 sits after "Who's in the room", with inline `[n]` refs and a trailing `## Sources`. An automatic risk line is added for each unconfirmed identity. Also fixed a stray ". ." when tenure is null.
+- `cli.py`: `--research` (repeatable). `main(..., searcher=)` and `run_prep(..., searcher=, research_requests=)` for injection.
+- `tests/fixtures/search/{tom_becker,john_smith}.json`: Tavily-shaped responses. `FakeSearch` serves a fixture when its name (file stem) is in the query, otherwise `[]`.
+
+### Design decisions
+
+- **Searches are run by code, not offered to Gemini as a function.** The spec's stack table says "exposed to Gemini as a function". I didn't do that, so that the trigger stays deterministic, a known contact can never be searched, and the 3–5 cap holds. Session 4 can reuse `TavilySearch` the same way.
+- **Identity check is code.** A result counts only if it contains the full name *and* the company name, domain or domain root (e.g. `harbourviewhealth`). Role isn't required.
+- **The model never sees URLs.** It gets result ids, titles, dates and snippets (500 chars). The renderer maps the ids it cites back to the URLs. Claims citing an unknown id, or another person's id, or containing a URL, are dropped.
+- **Undated results are never cited**, because the spec requires a date on every researched claim. The LinkedIn fixture is undated on purpose. If everything matching is undated, the brief says "nothing stated (matching public results carried no publication date)". Tavily's dates are "best estimate of published or last updated" (beta).
+- The professional-info-only rule and "own words, no pasted text" are prompt rules (in `OUTPUT_CONTRACT`), not enforced in code.
+
+### For session 4 (company developments)
+
+- `TavilySearch.search` has `topic` already; add a date window (`start_date` + `filter_by_published_date`, or `time_range`) for the 90-day default and `--news-days`.
+- One search per unique external domain: `context["external_domains"]` is already deduped and excludes `OWN_COMPANY_DOMAINS`.
+- Source ids are numbered across the whole brief in `research()`; company news needs to continue that numbering (or move numbering into the renderer) so `## Sources` stays one list.
+- No live Tavily run yet. No `TAVILY_API_KEY` secret exists, and the tests are all mocked.

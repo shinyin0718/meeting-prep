@@ -1,0 +1,26 @@
+{
+  "query": "\"John Smith\" \"Solvane Energy\" Head of Partnerships",
+  "results": [
+    {
+      "title": "John Smith (explorer) - Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/John_Smith_(explorer)",
+      "content": "John Smith was an English soldier, explorer and colonial governor, remembered for his role in establishing Jamestown.",
+      "score": 0.62,
+      "published_date": "2025-11-02"
+    },
+    {
+      "title": "John Smith named Head of Partnerships at Brightwave Solar",
+      "url": "https://brightwave-solar.example.com/news/john-smith-partnerships",
+      "content": "Brightwave Solar announced that John Smith will lead partnerships for its residential storage business.",
+      "score": 0.58,
+      "published_date": "2025-09-18"
+    },
+    {
+      "title": "John Smith - Energy consultant",
+      "url": "https://consultants.example.net/john-smith-energy",
+      "content": "Independent energy consultant John Smith advises utilities on grid storage procurement.",
+      "score": 0.5,
+      "published_date": "2025-04-30"
+    }
+  ]
+}
