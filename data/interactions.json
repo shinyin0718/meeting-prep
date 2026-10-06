@@ -1,0 +1,18 @@
+[
+  {"id": "i_001", "person_email": "aisha.rahman@harbourviewhealth.com", "days_ago": 180, "type": "meeting", "summary": "Kickoff for the current contract year; Aisha set adoption targets for three clinical teams."},
+  {"id": "i_002", "person_email": "aisha.rahman@harbourviewhealth.com", "days_ago": 75, "type": "call", "summary": "Mid-year check-in; adoption at two of three teams, Aisha flagged budget pressure for next year."},
+  {"id": "i_003", "person_email": "aisha.rahman@harbourviewhealth.com", "days_ago": 21, "type": "email", "summary": "Aisha asked for renewal pricing options with a two-year term and a revised SSO security questionnaire."},
+  {"id": "i_004", "person_email": "aisha.rahman@harbourviewhealth.com", "days_ago": 6, "type": "call", "summary": "Short call; Aisha said a new data platform lead is joining and wants to scope a pilot."},
+  {"id": "i_005", "person_email": "grace.liu@harbourviewhealth.com", "days_ago": 40, "type": "meeting", "summary": "Reviewed the business associate agreement; Grace to send redlines on data retention clauses."},
+  {"id": "i_006", "person_email": "grace.liu@harbourviewhealth.com", "days_ago": 12, "type": "email", "summary": "Grace said redlines are delayed pending legal review."},
+  {"id": "i_007", "person_email": "marcus.webb@kestrelfreight.com", "days_ago": 300, "type": "meeting", "summary": "Signed the 2026 contract; Marcus pushed hard on uptime commitments."},
+  {"id": "i_008", "person_email": "marcus.webb@kestrelfreight.com", "days_ago": 90, "type": "call", "summary": "Escalation about a two-hour outage in the routing dashboard; resolved with a service credit."},
+  {"id": "i_009", "person_email": "marcus.webb@kestrelfreight.com", "days_ago": 14, "type": "email", "summary": "Marcus asked for a draft 2027 rate card ahead of renegotiation."},
+  {"id": "i_010", "person_email": "elena.petrova@kestrelfreight.com", "days_ago": 60, "type": "email", "summary": "Elena introduced herself as the new procurement lead and requested updated vendor onboarding forms."},
+  {"id": "i_011", "person_email": "elena.petrova@kestrelfreight.com", "days_ago": 9, "type": "call", "summary": "Elena said procurement wants a 10% volume discount for 2027."},
+  {"id": "i_012", "person_email": "carlos.mendes@solvane-energy.com", "days_ago": 30, "type": "meeting", "summary": "Met Carlos at an energy analytics conference; interested in grid demand forecasting."},
+  {"id": "i_013", "person_email": "carlos.mendes@solvane-energy.com", "days_ago": 8, "type": "email", "summary": "Carlos agreed to an intro call and said he would bring a partnerships colleague."},
+  {"id": "i_014", "person_email": "priya.raman@lumora-analytics.com", "days_ago": 3, "type": "meeting", "summary": "Weekly pipeline review; Priya asked for Harbourview renewal risk notes."},
+  {"id": "i_015", "person_email": "daniel.okafor@lumora-analytics.com", "days_ago": 5, "type": "call", "summary": "Daniel shared Kestrel uptime figures for the renegotiation."},
+  {"id": "i_016", "person_email": "meilin.tan@lumora-analytics.com", "days_ago": 10, "type": "email", "summary": "Mei Lin circulated the Q1 roadmap and asked for customer feature requests."}
+]

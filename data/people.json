@@ -1,0 +1,12 @@
+[
+  {"name": "Priya Raman", "email": "priya.raman@lumora-analytics.com", "company_domain": "lumora-analytics.com", "role": "Head of Sales, APAC", "tenure": "Joined 2021"},
+  {"name": "Daniel Okafor", "email": "daniel.okafor@lumora-analytics.com", "company_domain": "lumora-analytics.com", "role": "Senior Solutions Engineer", "tenure": "Joined 2022"},
+  {"name": "Mei Lin Tan", "email": "meilin.tan@lumora-analytics.com", "company_domain": "lumora-analytics.com", "role": "Product Manager, Data Platform", "tenure": "Joined 2023"},
+  {"name": "Aisha Rahman", "email": "aisha.rahman@harbourviewhealth.com", "company_domain": "harbourviewhealth.com", "role": "Chief Information Officer", "tenure": "Customer contact since 2024"},
+  {"name": "Grace Liu", "email": "grace.liu@harbourviewhealth.com", "company_domain": "harbourviewhealth.com", "role": "Compliance Manager", "tenure": "Customer contact since 2025"},
+  {"name": "Tom Becker", "email": "tom.becker@harbourviewhealth.com", "company_domain": "harbourviewhealth.com", "role": "Data Platform Lead", "tenure": null},
+  {"name": "Marcus Webb", "email": "marcus.webb@kestrelfreight.com", "company_domain": "kestrelfreight.com", "role": "VP Operations", "tenure": "Customer contact since 2023"},
+  {"name": "Elena Petrova", "email": "elena.petrova@kestrelfreight.com", "company_domain": "kestrelfreight.com", "role": "Procurement Lead", "tenure": "Customer contact since 2025"},
+  {"name": "Carlos Mendes", "email": "carlos.mendes@solvane-energy.com", "company_domain": "solvane-energy.com", "role": "Director of Strategy", "tenure": "Prospect contact since 2026"},
+  {"name": "John Smith", "email": "john.smith@solvane-energy.com", "company_domain": "solvane-energy.com", "role": "Head of Partnerships", "tenure": null}
+]

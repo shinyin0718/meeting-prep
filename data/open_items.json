@@ -1,0 +1,8 @@
+[
+  {"id": "o_001", "person_email": "aisha.rahman@harbourviewhealth.com", "company_domain": null, "description": "Send revised SSO security questionnaire", "owner": "Daniel Okafor", "due_in_days": 2},
+  {"id": "o_002", "person_email": null, "company_domain": "harbourviewhealth.com", "description": "Deliver renewal pricing proposal (one- and two-year options)", "owner": "Priya Raman", "due_in_days": 1},
+  {"id": "o_003", "person_email": "grace.liu@harbourviewhealth.com", "company_domain": null, "description": "Return BAA redlines on data retention clauses", "owner": "Grace Liu", "due_in_days": -7},
+  {"id": "o_004", "person_email": null, "company_domain": "kestrelfreight.com", "description": "Share draft 2027 rate card", "owner": "Daniel Okafor", "due_in_days": 3},
+  {"id": "o_005", "person_email": "elena.petrova@kestrelfreight.com", "company_domain": null, "description": "Complete updated vendor onboarding forms", "owner": "Daniel Okafor", "due_in_days": -2},
+  {"id": "o_006", "person_email": "carlos.mendes@solvane-energy.com", "company_domain": null, "description": "Send grid demand forecasting case study", "owner": "Priya Raman", "due_in_days": 5}
+]

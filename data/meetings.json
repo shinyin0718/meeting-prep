@@ -1,0 +1,47 @@
+[
+  {
+    "id": "m_001",
+    "title": "Harbourview Health: Q4 renewal review",
+    "start_in_days": 1,
+    "start_time": "10:00",
+    "duration_minutes": 45,
+    "attendee_emails": ["priya.raman@lumora-analytics.com", "aisha.rahman@harbourviewhealth.com", "grace.liu@harbourviewhealth.com"],
+    "agenda": ["Usage and adoption review for the current contract year", "Renewal pricing and term options", "Open compliance items (BAA redlines, SSO questionnaire)", "Agree next steps and signature timeline"]
+  },
+  {
+    "id": "m_002",
+    "title": "Harbourview Health: data platform pilot scoping",
+    "start_in_days": 2,
+    "start_time": "14:00",
+    "duration_minutes": 60,
+    "attendee_emails": ["daniel.okafor@lumora-analytics.com", "aisha.rahman@harbourviewhealth.com", "tom.becker@harbourviewhealth.com"],
+    "agenda": ["Pilot goals and success metrics", "Data sources and integration requirements", "Timeline and resourcing"]
+  },
+  {
+    "id": "m_003",
+    "title": "Solvane Energy: intro call",
+    "start_in_days": 3,
+    "start_time": "09:30",
+    "duration_minutes": 30,
+    "attendee_emails": ["priya.raman@lumora-analytics.com", "carlos.mendes@solvane-energy.com", "john.smith@solvane-energy.com"],
+    "agenda": null
+  },
+  {
+    "id": "m_004",
+    "title": "Kestrel Freight: 2027 contract renegotiation",
+    "start_in_days": 4,
+    "start_time": "11:00",
+    "duration_minutes": 60,
+    "attendee_emails": ["daniel.okafor@lumora-analytics.com", "marcus.webb@kestrelfreight.com", "elena.petrova@kestrelfreight.com"],
+    "agenda": ["Review 2026 service levels", "2027 rate card and volume commitments", "Vendor onboarding paperwork"]
+  },
+  {
+    "id": "m_005",
+    "title": "Internal: weekly pipeline review",
+    "start_in_days": 5,
+    "start_time": "16:00",
+    "duration_minutes": 30,
+    "attendee_emails": ["priya.raman@lumora-analytics.com", "daniel.okafor@lumora-analytics.com", "meilin.tan@lumora-analytics.com"],
+    "agenda": ["Deal-by-deal pipeline walkthrough", "Pilot resourcing for Harbourview", "Roadmap asks from customers"]
+  }
+]
