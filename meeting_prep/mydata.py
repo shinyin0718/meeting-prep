@@ -6,6 +6,7 @@ real dates (start_date, date, due_date) instead of the samples' relative offsets
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -18,6 +19,9 @@ ROOT = Path(__file__).resolve().parent.parent
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 INTERACTION_TYPES = ("call", "email", "meeting")
 MAX_ATTENDEES = 30
+# People added without an email get a stand-in key; for a new company the domain is made up under
+# the reserved .invalid TLD, which searches and the brief leave out (see real_domain).
+PLACEHOLDER_TLD = ".invalid"
 
 
 class DataError(ValueError):
@@ -86,14 +90,50 @@ def _date(value: Any, label: str) -> date:
         raise DataError(f"{label} must be a date like 2026-10-20.") from None
 
 
+def real_domain(domain: str | None) -> str | None:
+    return domain if domain and not domain.lower().endswith(PLACEHOLDER_TLD) else None
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "unknown"
+
+
+def _stand_in_email(name: str, domain: str, people: dict[str, dict[str, Any]]) -> str:
+    """The same name at the same company is the same person; otherwise a new, unused key."""
+    for email, p in people.items():
+        if p["name"].lower() == name.lower() and p["company_domain"].lower() == domain:
+            return email
+    local = _slug(name).replace("-", ".")
+    for n in itertools.count(1):
+        email = f"{local}{n if n > 1 else ''}@{domain}"
+        if email not in people:
+            return email
+    raise AssertionError("unreachable")
+
+
+def _who(entry: dict[str, Any], emails: list[str]) -> str | None:
+    """History and to-dos point at an attendee by position in the form (or by email)."""
+    index = entry.get("attendee")
+    if isinstance(index, int) and not isinstance(index, bool) and 0 <= index < len(emails):
+        return emails[index]
+    email = str(entry.get("email") or "").lower()
+    return email if email in emails else None
+
+
+def company_names() -> list[str]:
+    return sorted({c["name"] for c in _all("companies")}, key=str.lower)
+
+
 def is_mine(meeting_id: str) -> bool:
     return any(m["id"] == meeting_id for m in _mine("meetings"))
 
 
 def add_meeting(form: dict[str, Any]) -> dict[str, Any]:
     """Validate everything first, then save. Fields: title, date, time, duration_minutes, agenda [str],
-    attendees [{name, email, company, role}], history [{email, date, type, summary}],
-    open_items [{email, description, owner, due_date}]. Known people and companies are reused as they are."""
+    attendees [{name, email, company, role}], history [{attendee, date, type, summary}],
+    open_items [{attendee, description, owner, due_date}] (attendee = index into attendees).
+    Email is optional: without one, the company name decides the domain. Known people and companies are
+    reused as they are."""
     title = _text(form.get("title"), "Meeting title")
     start_date = _date(form.get("date"), "Date")
     try:
@@ -115,33 +155,52 @@ def add_meeting(form: dict[str, Any]) -> dict[str, Any]:
         raise DataError("Add at least one attendee.")
     if len(attendees) > MAX_ATTENDEES:
         raise DataError(f"At most {MAX_ATTENDEES} attendees.")
-    known_people = {p["email"].lower() for p in _all("people")}
+    known_people = {p["email"].lower(): p for p in _all("people")}
     known_companies = {c["domain"].lower() for c in _all("companies")}
+    domain_by_name = {c["name"].lower(): c["domain"].lower() for c in _all("companies")}
     people, companies = _mine("people"), _mine("companies")
     emails: list[str] = []
     for i, a in enumerate(attendees, 1):
-        email = _text(a.get("email"), f"Attendee {i}'s email").lower()
-        if not EMAIL.match(email):
-            raise DataError(f"Attendee {i}'s email doesn't look right: {email}")
+        email = _text(a.get("email"), f"Attendee {i}'s email", required=False).lower()
+        name = _text(a.get("name"), f"Attendee {i}'s name", required=False)
+        company = _text(a.get("company"), f"Attendee {i}'s company", required=False)
+        has_email = bool(email)
+        if has_email:
+            if not EMAIL.match(email):
+                raise DataError(f"Attendee {i}'s email doesn't look right: {email}")
+            domain = email.rsplit("@", 1)[1]
+        else:
+            if not name:
+                raise DataError(f"Attendee {i} needs a name or an email.")
+            if not company:
+                raise DataError(f"Add {name}'s email or company, so the brief knows where they work.")
+            domain = domain_by_name.get(company.lower()) or f"{_slug(company)}{PLACEHOLDER_TLD}"
+            email = _stand_in_email(name, domain, known_people)
         if email in emails:
-            raise DataError(f"{email} is listed twice.")
+            raise DataError(f"{email if has_email else name} is listed twice.")
         emails.append(email)
-        domain = email.rsplit("@", 1)[1]
         if domain not in known_companies:
-            companies.append({"name": _text(a.get("company"), f"Company for {email}"), "domain": domain})
+            if not company:
+                raise DataError(f"Company for {email} is required.")
+            companies.append({"name": company, "domain": domain})
             known_companies.add(domain)
+            domain_by_name.setdefault(company.lower(), domain)
         if email not in known_people:
-            people.append({"name": _text(a.get("name"), f"Attendee {i}'s name"), "email": email,
-                           "company_domain": domain,
-                           "role": _text(a.get("role"), f"Attendee {i}'s role", required=False) or None})
-            known_people.add(email)
+            if not name:
+                raise DataError(f"Attendee {i}'s name is required.")
+            person = {"name": name, "email": email, "company_domain": domain,
+                      "role": _text(a.get("role"), f"Attendee {i}'s role", required=False) or None}
+            if not has_email:
+                person["email_unknown"] = True
+            people.append(person)
+            known_people[email] = person
 
     interactions = _mine("interactions")
     all_interactions = _all("interactions")
     for i, h in enumerate(form.get("history") or [], 1):
         label = f"Past conversation {i}"
-        email = str(h.get("email") or "").lower()
-        if email not in emails:
+        email = _who(h, emails)
+        if email is None:
             raise DataError(f"{label}: pick who it was with.")
         when = _date(h.get("date"), f"{label}'s date")
         if when > _today():
@@ -158,8 +217,8 @@ def add_meeting(form: dict[str, Any]) -> dict[str, Any]:
     all_items = _all("open_items")
     for i, o in enumerate(form.get("open_items") or [], 1):
         label = f"To-do {i}"
-        email = str(o.get("email") or "").lower()
-        if email not in emails:
+        email = _who(o, emails)
+        if email is None:
             raise DataError(f"{label}: pick who it's for.")
         row = {"id": _next_id("o", all_items), "person_email": email, "company_domain": None,
                "description": _text(o.get("description"), f"{label}'s description"),

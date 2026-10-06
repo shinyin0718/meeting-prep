@@ -167,3 +167,8 @@ def test_meeting_added_from_the_page_can_be_listed_prepped_and_deleted(tmp_path)
 def test_bad_meeting_form_is_a_clear_400(tmp_path):
     res = make_client(tmp_path).post("/api/meetings", json={**NEW_MEETING, "title": ""})
     assert res.status_code == 400 and res.json()["detail"] == "Meeting title is required."
+
+
+def test_meetings_include_known_company_names_for_suggestions(tmp_path):
+    companies = make_client(tmp_path).get("/api/meetings").json()["companies"]
+    assert companies == ["Harbourview Health", "Kestrel Freight", "Lumora Analytics", "Solvane Energy"]

@@ -88,7 +88,8 @@
         </label>
       </div>
       <h3>Who's coming</h3>
-      <p class="hint">Include yourself or colleagues if you like. Company is only needed the first time someone from that company is added.</p>
+      <p class="hint">Email is optional. If you leave it out, type the company name and pick it from the suggestions when it's already listed (for colleagues, pick your own company). With an email, you only need the company the first time you add someone from it.</p>
+      <datalist id="company-list"></datalist>
       <div id="f-attendees"></div>
       <button type="button" class="add-row" data-add="attendee">+ Add person</button>
       <h3>Agenda <span class="optional">(optional)</span></h3>
@@ -308,6 +309,7 @@ async function loadMeetings(selectId) {
   try {
     const body = await api("/api/meetings");
     state.meetings = body.meetings; state.limits = body.limits;
+    $("company-list").replaceChildren(...(body.companies || []).map((name) => el("option", { value: name })));
     const keep = selectId || state.selected;
     state.selected = state.meetings.some((m) => m.id === keep) ? keep : (state.meetings[0] || {}).id || null;
     $("limits-text").textContent = `PDF, Word, text or Markdown · up to ${body.limits.max_files} files, ${mb(body.limits.max_total_bytes)} in total`;
@@ -320,9 +322,11 @@ async function loadMeetings(selectId) {
 // "Add a meeting" form
 const field = (name, placeholder, type = "text") => el("input", { name, placeholder, type, ariaLabel: placeholder });
 function personSelect() { const s = el("select", { name: "person", ariaLabel: "Who" }); s.className = "person"; return s; }
+let rowKey = 0;
 function addRow(listId, cells) {
   const remove = el("button", { type: "button", className: "link-btn", textContent: "Remove" });
   const row = el("div", { className: "form-row" }, ...cells, remove);
+  row.dataset.key = String(++rowKey);
   remove.onclick = () => { row.remove(); refreshPeople(); };
   $(listId).append(row);
   refreshPeople();
@@ -330,11 +334,13 @@ function addRow(listId, cells) {
 }
 const rowMakers = {
   attendee: () => {
-    const email = field("email", "Email", "email");
+    const email = field("email", "Email (optional)", "email");
     email.oninput = refreshPeople;
     const name = field("name", "Name");
     name.oninput = refreshPeople;
-    addRow("f-attendees", [name, email, field("company", "Company"), field("role", "Role (optional)")]);
+    const company = field("company", "Company");
+    company.setAttribute("list", "company-list");
+    addRow("f-attendees", [name, email, company, field("role", "Role (optional)")]);
   },
   history: () => {
     const type = el("select", { name: "type", ariaLabel: "Type" });
@@ -346,29 +352,30 @@ const rowMakers = {
 };
 function attendeeChoices() {
   return [...$("f-attendees").querySelectorAll(".form-row")].map((r) => ({
-    email: r.querySelector("[name=email]").value.trim().toLowerCase(),
-    name: r.querySelector("[name=name]").value.trim(),
-  })).filter((a) => a.email);
+    key: r.dataset.key,
+    label: r.querySelector("[name=name]").value.trim() || r.querySelector("[name=email]").value.trim(),
+  })).filter((a) => a.label);
 }
 function refreshPeople() {
   const people = attendeeChoices();
   for (const select of $("add-form").querySelectorAll("select.person")) {
     const value = select.value;
     select.replaceChildren(el("option", { value: "", textContent: "With who?" }),
-      ...people.map((p) => el("option", { value: p.email, textContent: p.name || p.email })));
-    select.value = people.some((p) => p.email === value) ? value : "";
+      ...people.map((p) => el("option", { value: p.key, textContent: p.label })));
+    select.value = people.some((p) => p.key === value) ? value : "";
   }
 }
 function collect() {
   const rows = (id) => [...$(id).querySelectorAll(".form-row")];
   const val = (row, name) => row.querySelector(`[name=${name}]`).value.trim();
+  const who = (key) => { const i = rows("f-attendees").findIndex((a) => a.dataset.key === key); return i < 0 ? null : i; };
   return {
     title: $("f-title").value, date: $("f-date").value, time: $("f-time").value,
     duration_minutes: Number($("f-duration").value),
     agenda: $("f-agenda").value.split("\n").map((s) => s.trim()).filter(Boolean),
     attendees: rows("f-attendees").map((r) => ({ name: val(r, "name"), email: val(r, "email"), company: val(r, "company"), role: val(r, "role") })),
-    history: rows("f-history").map((r) => ({ email: val(r, "person"), date: val(r, "date"), type: val(r, "type"), summary: val(r, "summary") })),
-    open_items: rows("f-todos").map((r) => ({ email: val(r, "person"), description: val(r, "description"), owner: val(r, "owner"), due_date: val(r, "due") })),
+    history: rows("f-history").map((r) => ({ attendee: who(val(r, "person")), date: val(r, "date"), type: val(r, "type"), summary: val(r, "summary") })),
+    open_items: rows("f-todos").map((r) => ({ attendee: who(val(r, "person")), description: val(r, "description"), owner: val(r, "owner"), due_date: val(r, "due") })),
   };
 }
 function resetForm() {

@@ -273,3 +273,10 @@ Shin asked how to add their own meetings and chose a web form over editing JSON 
 - Web: `POST /api/meetings` (JSON) and `DELETE /api/meetings/{id}` are added, and `GET /api/meetings` now looks 365 days ahead and marks `mine`. In the page, **+ Add a meeting** opens the form. "Yours" meetings have a **Delete** link, and there's no edit yet (delete and re-add instead).
 - `brief.py` now leaves out an empty role instead of printing "None".
 - `tests/conftest.py` points `MEETING_PREP_USER_DATA_DIR` at a temp folder, so tests never touch `data/mine/`.
+
+## Optional attendee email (done)
+
+- If the email is blank, the name and company are required. The domain is the known company's domain (matched by name, case-insensitive), or `<company-slug>.invalid` for a new company. The person's key is then a stand-in email (`jordan.lee@acme-corp.invalid`, marked `email_unknown: true`). The same name at the same company reuses that person, so re-adding someone without an email doesn't duplicate them.
+- `mydata.real_domain()` returns None for `.invalid` domains. `news.queries`, `research.queries` / `is_match` and the brief's Company snapshot header leave those domains out. Company news is still searched by company name.
+- History and to-dos now point at an attendee by position (`attendee: <index>`); `email` still works. In the page, rows have stable keys, so removing a person doesn't swap who a conversation belongs to.
+- `GET /api/meetings` returns `companies` (known names) for the Company field's suggestions.

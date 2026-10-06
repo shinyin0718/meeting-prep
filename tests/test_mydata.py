@@ -74,6 +74,9 @@ def test_ids_keep_counting_up():
     ({"attendees": [{"name": "X", "email": "x@new.example"}]}, "Company for x@new.example is required"),
     ({"attendees": [{"email": "x@acme.example", "company": "Acme"}]}, "Attendee 1's name is required"),
     ({"attendees": [{"email": "priya.raman@lumora-analytics.com"}] * 2}, "listed twice"),
+    ({"attendees": [{"name": "Jo", "company": "Acme"}] * 2}, "Jo is listed twice"),
+    ({"attendees": [{"name": "Jo"}]}, "Add Jo's email or company"),
+    ({"attendees": [{"company": "Acme"}]}, "Attendee 1 needs a name or an email"),
     ({"history": [{"email": "nobody@x.com", "date": "2026-01-10", "type": "call", "summary": "x"}]}, "who it was with"),
     ({"history": [{"email": "jo@acme.example", "date": "2026-02-10", "type": "call", "summary": "x"}]}, "in the future"),
     ({"history": [{"email": "jo@acme.example", "date": "2026-01-10", "type": "fax", "summary": "x"}]}, "type must be"),
@@ -91,3 +94,38 @@ def test_delete_only_your_own_meetings():
     assert mine("meetings") == [] and len(mine("people")) == 1
     with pytest.raises(DataError, match="only meetings you added"):
         delete_meeting("m_001")
+
+
+def test_email_is_optional_and_the_company_name_is_used_instead():
+    meeting = add_meeting(form(
+        attendees=[{"name": "Priya Raman", "company": "lumora analytics"},
+                   {"name": "Mei Lin", "company": "Lumora Analytics"},
+                   {"name": "Jordan Lee", "company": "Acme Corp", "role": "VP"}],
+        history=[{"attendee": 2, "date": "2026-01-10", "type": "call", "summary": "Intro."}],
+        open_items=[{"attendee": 2, "description": "Send deck", "owner": "me", "due_date": "2026-01-25"}]))
+    assert meeting["attendee_emails"] == ["priya.raman@lumora-analytics.com", "mei.lin@lumora-analytics.com",
+                                          "jordan.lee@acme-corp.invalid"]
+    got = server.get_meeting(meeting["id"])["attendees"]
+    assert [a["is_internal"] for a in got] == [True, True, False]
+    assert got[2]["company"] == "Acme Corp"
+    assert {p["name"]: p.get("email_unknown") for p in mine("people")} == {"Mei Lin": True, "Jordan Lee": True}
+    assert server.get_interaction_history("jordan.lee@acme-corp.invalid")[0]["summary"] == "Intro."
+    assert server.get_open_items("acme-corp.invalid")[0]["description"] == "Send deck"
+
+
+def test_same_person_without_email_is_recognised_next_time():
+    add_meeting(form(attendees=[{"name": "Jordan Lee", "company": "Acme Corp"}], history=[], open_items=[]))
+    second = add_meeting(form(attendees=[{"name": "jordan lee", "company": "acme corp"}], history=[], open_items=[]))
+    assert second["attendee_emails"] == ["jordan.lee@acme-corp.invalid"]
+    assert len(mine("people")) == 1 and len(mine("companies")) == 1
+
+
+def test_made_up_domains_stay_out_of_searches_and_the_brief():
+    from meeting_prep import brief, news, research
+
+    assert all(".invalid" not in q for q, _ in news.queries(news.Company("Acme Corp", "acme-corp.invalid")))
+    target = research.Target("Jordan Lee", "Acme Corp", domain="acme-corp.invalid")
+    assert all(".invalid" not in q for q in research.queries(target))
+    snapshot = "\n".join(brief._snapshot([{"company": "Acme Corp", "domain": "acme-corp.invalid", "days": 90}],
+                                          {"acme-corp.invalid": []}, {}))
+    assert "**Acme Corp**" in snapshot and ".invalid" not in snapshot
