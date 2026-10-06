@@ -1,5 +1,6 @@
 import asyncio
 
+import httpx
 import pytest
 from google.genai import errors, types
 
@@ -127,3 +128,24 @@ def test_model_defaults_and_env_override(monkeypatch):
     assert GeminiLLM(client=object()).model == "gemini-3.8-flash"
     monkeypatch.setenv("GEMINI_MODEL", "gemini-3.6-flash")
     assert GeminiLLM(client=object()).model == "gemini-3.6-flash"
+
+
+@pytest.mark.parametrize("exc", [httpx.ReadTimeout("slow"), TimeoutError()])
+def test_timeouts_fail_fast_with_clear_message(exc):
+    sleeps = []
+    llm, models = make([exc], sleeps)
+    with pytest.raises(LLMError, match="didn't answer in time"):
+        asyncio.run(llm.start_chat("s", TOOLS).send("hi"))
+    assert sleeps == [] and len(models.requests) == 1
+
+
+def test_real_client_gets_a_request_timeout(monkeypatch):
+    from google import genai
+
+    captured = {}
+    monkeypatch.setattr(genai, "Client", lambda **kw: captured.update(kw) or object())
+    GeminiLLM(api_key="k")
+    assert captured["http_options"].timeout == 90_000
+    monkeypatch.setenv("GEMINI_TIMEOUT_SECONDS", "30")
+    GeminiLLM(api_key="k")
+    assert captured["http_options"].timeout == 30_000

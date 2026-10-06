@@ -17,7 +17,7 @@ Build a command-line agent that turns an upcoming meeting into a one-page prep b
 **Out of scope for v1**
 
 - Real calendar or CRM connections (planned after v1)
-- Web UI or upload button
+- Web UI or upload button (added after v1 as a local page: `uv run web.py`)
 - Sending email, scheduling or editing anything
 - Multi-user support
 

@@ -240,7 +240,21 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 - gemini-3.8-flash and gemini-3.6-flash used up their free daily quota today. The models list also has gemini-3.7-flash, gemini-3.5-flash and gemini-flash-latest, each with its own quota.
 - Still to try: a live m_001 after the one-page guard, and m_001 with `--files tests/fixtures/files/{renewal_deck.pdf,call_notes.docx,injection.txt}`.
 
-### For the web upload page (next)
+## Web upload page (after session 6, done)
 
-- Reuse `materials.validate` / `stage` / `load` and `cli.run_prep(meeting_id, llm=..., output_dir=..., files=[...])`. Upload to a temp path, then pass the paths in `files`.
-- Shin prefers point-and-click: a meeting picker (from `list_upcoming_meetings`), a file drop zone, a "Prepare brief" button, and the rendered brief with a download link.
+`uv run web.py` serves a single page at http://127.0.0.1:8000: pick a meeting, drop files, **Prepare brief**, then read, download or copy the brief.
+
+### Files added / changed
+
+- `meeting_prep/web.py`: FastAPI app (`create_app(llm_factory=, searcher_factory=, output_dir=)`; tests pass fakes). Routes: `GET /` page, `GET /api/meetings` (next 30 days, with attendees, already-attached files and limits), `POST /api/prep` (multipart `meeting_id`, `news_days`, `files`), `DELETE /api/meetings/{id}/files/{name}`.
+- `meeting_prep/static/index.html`: plain HTML/CSS/JS with no build step. Checks file type, count and size in the browser for instant feedback; the server checks again.
+- `web.py` (entry point), `materials.stored()` (public list of a meeting's attached files), `tests/test_web.py`.
+- New deps: fastapi, uvicorn, python-multipart, markdown-it-py.
+
+### Design decisions
+
+- Uploads are written to a temp folder under just their own file name (any `../` is stripped), checked with `materials.validate`, then passed to `cli.run_prep(files=...)`. So staging, reuse and limits work exactly as with `--files`.
+- Errors map to status codes: bad file or missing key → 400, unknown meeting → 404, Gemini/Tavily failure → 502. The page shows the message as-is.
+- The brief is turned into HTML on the server with markdown-it in `commonmark` mode with `html: False`, so raw HTML from model, web or file text is escaped and `javascript:` links are refused. Links open in a new tab.
+- Listens on 127.0.0.1 only (no login). `web.main` warns when `OWN_COMPANY_DOMAINS` isn't set, since otherwise colleagues show as external.
+- Gemini requests now have a timeout (`GEMINI_TIMEOUT_SECONDS`, default 90). A timeout isn't retried, since it may already count against the free quota, and instead fails with "Gemini didn't answer in time". Before this, one stuck request left the page spinning for more than 5 minutes. The page also shows elapsed time and gives up after 6 minutes.

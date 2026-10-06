@@ -27,6 +27,7 @@ cp .env.example .env     # then fill in values; never commit .env
 ## Commands
 
 ```bash
+uv run web.py                           # web page at http://127.0.0.1:8000 (see below)
 uv run main.py prep --meeting-id m_001   # write output/prep_m_001.md
 uv run main.py prep --next               # brief for the earliest meeting in the next 7 days
 uv run main.py prep --meeting-id m_001 --research "Grace Liu, Harbourview Health"   # also research anyone by hand
@@ -37,6 +38,16 @@ uv run mcp_server.py             # run the MCP server on stdio
 ```
 
 `--files` accepts at most 10 files and 20 MB in total. Files are copied to `data/attachments/<meeting_id>/` and reused the next time you prep that meeting. To stop using a file, delete it from that folder.
+
+## Web page
+
+`uv run web.py` starts a local page at http://127.0.0.1:8000. Leave the terminal open while you use it, and press Ctrl+C to stop.
+
+1. **Pick a meeting** from the next 30 days.
+2. **Add your files** (optional) by dragging them onto the dashed box or clicking it. The same rules as `--files` apply: PDF, DOCX, TXT or MD, at most 10 files and 20 MB per meeting. Files already attached to the meeting are listed with a **Remove** button.
+3. Click **Prepare brief**. The brief appears on the page with **Download (.md)** and **Copy text** buttons, and is also saved to `output/prep_<id>.md`.
+
+It runs the same steps as `main.py prep` and needs the same keys in `.env`. The page has no login, so it only listens on this computer. Set `MEETING_PREP_HOST` / `MEETING_PREP_PORT` to change that, but only on a network you trust.
 
 ## Tests and evals
 
@@ -76,6 +87,7 @@ uvx ruff check .                 # lint
 
 ```
 main.py                 CLI entry point (meeting_prep/cli.py)
+web.py                  web page entry point (meeting_prep/web.py + meeting_prep/static/index.html)
 mcp_server.py           FastMCP server: the five read-only tools over data/*.json
 meeting_prep/
   agent.py              gathers context through MCP, prompts Gemini, parses its JSON
