@@ -202,3 +202,4 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 - **Long files:** each file is cut to the first 12,000 characters (`MAX_CHARS`) of text sent to Gemini, to stay inside free-tier limits. The brief says so ("Only the first 12,000 characters of `x` were read."), so it is never silent. The 20 MB limit is about upload size and is rejected outright.
 - **The flag is `--files`** (the spec's name), not `--attach`, which I used when discussing it with Shin.
 - **Web upload page:** Shin wants one as an extra step after session 6. It should reuse `validate`/`stage`/`load` unchanged.
+- **Live Gemini check: not done (2026-10-06).** `gemini-3.8-flash` had used up its free daily quota, and `gemini-3.6-flash` returned 503 "high demand". Next session, try one real run of m_001 with `--files tests/fixtures/files/{renewal_deck.pdf,call_notes.docx,injection.txt}`, and check that the injection text doesn't appear as a point.
