@@ -32,24 +32,24 @@ The stack is fixed up front so Devin does not make these choices for you.
 | Language | Python 3.12+ |
 | Package manager | `uv` |
 | MCP server | `mcp[cli]` (FastMCP), stdio transport |
-| LLM | Anthropic SDK; model set by `CLAUDE_MODEL` in `.env` |
-| Web research | Anthropic API web search tool (confirm it is enabled on the account) |
+| LLM | Google Gemini API (free tier) via the `google-genai` SDK, using function calling; model set by `GEMINI_MODEL` in `.env` |
+| Web research | Tavily Search API (free plan: 1,000 credits/month, no card), called by the agent's own `web_search` tool and exposed to Gemini as a function. Gemini's built-in Google Search is not used: it is unavailable on the free tier and its citations lack page titles and publication dates. |
 | File parsing | `pypdf`, `python-docx`, plain read for TXT and MD |
 | Mock data | JSON files in `data/` (SQLite is acceptable) |
 | Tests | `pytest`; LLM and web search calls mocked by default |
-| Config | `.env` with `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `OWN_COMPANY_DOMAINS` |
+| Config | `.env` with `GEMINI_API_KEY`, `GEMINI_MODEL`, `TAVILY_API_KEY`, `OWN_COMPANY_DOMAINS` |
 
 **Constraints**
 
 - Secrets live only in environment variables or Devin's secrets. Never commit them. Provide a `.env.example`.
-- Follow the structure of the Anthropic Academy course project (MCP client, Claude wrapper, CLI app). Give Devin access to that repo as a reference.
+- Structure the agent as an MCP client, a Gemini wrapper and a CLI app, with web search behind its own small module so it can be mocked.
 - Every Devin session ends with passing tests and a short report of what was built and what was skipped.
 
 ## Architecture
 
 &#91;embedded content: architecture · 7 components, 6 connections\]
 
-The agent is the only part that touches everything: it runs Claude's tool requests through the MCP server and parses attached files. Claude's web search covers new contacts and company news.
+The agent is the only part that touches everything: it runs Gemini's function calls through the MCP server (or the Tavily-backed `web_search` tool) and parses attached files. Tavily search covers new contacts and company news.
 
 ## Mock data
 
@@ -212,7 +212,7 @@ Devin must verify each item itself, mostly through `pytest` and one eval script.
 - [ ] A seeded open item for an attendee appears in the brief.
 - [ ] An attendee with no history gets "no prior interactions on record" and no invented history.
 - [ ] `m_003` (no agenda) and `m_005` (internal only) both produce valid briefs without errors.
-- [ ] A missing `ANTHROPIC_API_KEY` produces a clear error, and no key appears anywhere in the repo.
+- [ ] A missing `GEMINI_API_KEY` produces a clear error, a missing `TAVILY_API_KEY` produces a clear error when a web search is needed, and no key appears anywhere in the repo.
 
 **First-time research**
 
@@ -255,7 +255,7 @@ Run six separate Devin sessions, one per scope below. Each is small enough to ve
 
 - Paste only the sections that session needs: Overview, Stack and constraints, the relevant feature section, and its acceptance criteria.
 - Ask Devin to report at the checkpoint, and to stop and say so if a criterion cannot be met instead of loosening it.
-- Add `ANTHROPIC_API_KEY` through Devin's secrets, never in the prompt.
+- Add `GEMINI_API_KEY` and `TAVILY_API_KEY` through Devin's secrets, never in the prompt.
 - Review each diff yourself before starting the next session. That review is where you build the fluency you are after.
 - Each session ends by updating a `NOTES.md` that the next session reads first, since every session starts with a fresh context.
 

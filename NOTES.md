@@ -14,7 +14,7 @@ NOTES.md             this file
 README.md            setup + commands (stub; completed in session 6)
 pyproject.toml       uv project, Python >=3.12, pytest config (pythonpath=".")
 uv.lock
-.env.example         ANTHROPIC_API_KEY, CLAUDE_MODEL, OWN_COMPANY_DOMAINS (+ optional overrides)
+.env.example         GEMINI_API_KEY, GEMINI_MODEL, TAVILY_API_KEY, OWN_COMPANY_DOMAINS (+ optional overrides)
 mcp_server.py        FastMCP server, stdio transport, 5 read-only tools
 data/
   companies.json     4 companies (name, domain)
@@ -30,12 +30,12 @@ tests/
 
 ### Key decisions
 
-- **mcp pinned to `>=1.20,<2`** (1.30.0 locked). mcp 2.x renamed `FastMCP` to `MCPServer`; the spec and the Anthropic Academy course use FastMCP (`from mcp.server.fastmcp import FastMCP`). Don't upgrade to 2.x without migrating.
+- **mcp pinned to `>=1.20,<2`** (1.30.0 locked). mcp 2.x renamed `FastMCP` to `MCPServer`; the spec uses FastMCP (`from mcp.server.fastmcp import FastMCP`). Don't upgrade to 2.x without migrating.
 - **Dates are relative.** Data stores `start_in_days` / `days_ago` / `due_in_days`; tools resolve them against today at call time (local timezone). Meetings are always 1–5 days ahead, so `list_upcoming_meetings()` and `--next` (earliest upcoming) work on any real date. Set `MEETING_PREP_TODAY=YYYY-MM-DD` to pin today (tests do).
 - **`first_meeting` = external AND no interactions on record.** Colleagues (domain in `OWN_COMPANY_DOMAINS`) are never `first_meeting`, so the session-3 research trigger can use the flag directly. `is_internal` is also returned by `get_person_profile` and on each attendee in `get_meeting`.
 - **`OWN_COMPANY_DOMAINS` is read at call time** (`.env` loaded via python-dotenv). If unset, everyone is external — set it to `lumora-analytics.com` for the seed data.
 - **Errors** raise `ToolError` (MCP result `isError: true`) with a next step, e.g. "No person found for email '…'; check the address, or call get_meeting to see attendee emails." Empty results are `[]`.
-- Only `mcp[cli]` and `python-dotenv` are installed. Add `anthropic` (session 2) and `pypdf`, `python-docx` (session 5) when needed.
+- Only `mcp[cli]` and `python-dotenv` are installed. Add `google-genai` (session 2; not the old `google-generativeai`), `tavily-python` or plain HTTP for Tavily (session 3) and `pypdf`, `python-docx` (session 5) when needed.
 
 ### Tool contract (what session 2 builds on)
 
@@ -63,6 +63,7 @@ People with no history: Tom Becker, John Smith. Own company: Lumora Analytics (`
 
 - Tests import `mcp_server` directly (functions stay plain callables after `@mcp.tool()`); use `mcp.shared.memory.create_connected_server_and_client_session(srv.mcp._mcp_server)` for in-process protocol tests, or `stdio_client` to spawn `mcp_server.py` like the agent will.
 - `mcp dev` needs Node/npx and runs the latest `@modelcontextprotocol/inspector` (2.9.0 verified). Set `DANGEROUSLY_OMIT_AUTH=true` to skip the Inspector auth token (local only). If the Inspector page shows "404 Not Found", the npx cache is corrupt (happens when two `npx @modelcontextprotocol/inspector` runs install at once): delete the matching `~/.npm/_npx/<hash>` dir and rerun. Headless check: `npx @modelcontextprotocol/inspector --cli uv run mcp_server.py --method tools/list`.
-- The spec says to follow the Anthropic Academy course project structure (MCP client, Claude wrapper, CLI app); that reference repo was not available in session 1 — provide it for session 2.
+- **Provider switch (after session 1):** LLM is Google Gemini free tier (`google-genai`, function calling), web search is Tavily (free plan), called by our own `web_search` function — not Gemini's built-in Google Search, which is paid-tier only and returns no page titles or publication dates. SPEC.md is updated. The Anthropic Academy reference repo is dropped; structure is MCP client + Gemini wrapper + CLI app.
+- Gemini free tier can return transient 503 "high demand" errors; retry with backoff.
 - `.gitignore` already excludes `.env`, `output/`, `data/cache/`, `data/attachments/`.
 - Skipped in session 1 (by scope): agent, CLI, SKILL.md, web research, file ingestion, evals.

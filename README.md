@@ -15,8 +15,9 @@ cp .env.example .env     # then fill in values; never commit .env
 
 | Variable | Purpose |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Anthropic API key (used from session 2) |
-| `CLAUDE_MODEL` | Claude model id (used from session 2) |
+| `GEMINI_API_KEY` | Google Gemini API key, free tier ([get one](https://aistudio.google.com/apikey)); used from session 2 |
+| `GEMINI_MODEL` | Gemini model id, default `gemini-3.8-flash` |
+| `TAVILY_API_KEY` | Tavily Search API key, free plan ([get one](https://app.tavily.com)); used for web research from session 3 |
 | `OWN_COMPANY_DOMAINS` | Comma-separated email domains of your own company; seed data uses `lumora-analytics.com` |
 | `MEETING_PREP_TODAY` | Optional `YYYY-MM-DD` to pin "today" for reproducible runs |
 | `MEETING_PREP_DATA_DIR` | Optional path to an alternative data directory |
