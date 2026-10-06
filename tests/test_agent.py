@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 from meeting_prep import agent, cli
+from meeting_prep.fakes import FixtureSearch, ScriptedLLM
 from meeting_prep.llm import LLMReply, ToolCall
 from meeting_prep.mcp_client import _server_env
-from meeting_prep.web_search import parse_results
 
 ROOT = Path(__file__).resolve().parent.parent
 SECTIONS = [
@@ -37,64 +37,16 @@ SYNTHESIS = {
 }
 
 
-class FakeChat:
-    def __init__(self, owner):
-        self.owner = owner
-
-    async def send(self, message, *, allow_tools=True):
-        self.owner.sent.append((message, allow_tools))
-        script = self.owner.script
-        reply = script.pop(0) if len(script) > 1 else script[0]
-        return reply(message) if callable(reply) else reply
-
-
-class FakeLLM:
+class FakeLLM(ScriptedLLM):
     def __init__(self, *script):
-        self.script = list(script) or [LLMReply(text=json.dumps(SYNTHESIS))]
-        self.sent = []
-        self.system = None
-        self.tools = None
-
-    def start_chat(self, system, tools):
-        self.system, self.tools = system, tools
-        return FakeChat(self)
+        super().__init__(*(script or [LLMReply(text=json.dumps(SYNTHESIS))]))
 
 
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "search"
 NEWS_DIR = ROOT / "tests" / "fixtures" / "news"
 
 
-class FakeSearch:
-    """Person searches: tests/fixtures/search/<first_last>.json when that name is in the query.
-    Company news searches (the ones passing start_date): tests/fixtures/news/<domain>.json when the
-    fixture's company is in the query. Neither filters by date, so the date checks are the code's own."""
-
-    def __init__(self, error=None):
-        self.requests = []
-        self.error = error
-
-    @property
-    def person_calls(self):
-        return [r["query"] for r in self.requests if r["start_date"] is None]
-
-    @property
-    def news_calls(self):
-        return [r for r in self.requests if r["start_date"] is not None]
-
-    async def search(self, query, *, max_results=5, topic="general", start_date=None):
-        self.requests.append({"query": query, "topic": topic, "start_date": start_date, "max_results": max_results})
-        if self.error:
-            raise self.error
-        if start_date is None:
-            for path in sorted(FIXTURE_DIR.glob("*.json")):
-                if path.stem.replace("_", " ") in query.lower():
-                    return parse_results(json.loads(path.read_text()))[:max_results]
-            return []
-        for path in sorted(NEWS_DIR.glob("*.json")):
-            data = json.loads(path.read_text())
-            if data["company"].lower() in query.lower():
-                return parse_results(data)[:max_results]
-        return []
+FakeSearch = FixtureSearch
 
 
 def final(data=SYNTHESIS):
@@ -201,6 +153,43 @@ def test_m004_queries_shared_company_once(tmp_path, monkeypatch):
     run(tmp_path, "--meeting-id", "m_004")
     domain_calls = [a for n, a in calls if n == "get_open_items" and "@" not in a["email_or_domain"]]
     assert domain_calls == [{"email_or_domain": "kestrelfreight.com"}]
+
+
+def test_verbose_model_output_is_clipped_and_trimmed_to_one_page(tmp_path):
+    long = " ".join(["word"] * 80)
+    item = {"text": long, "based_on": long}
+    verbose = {**SYNTHESIS, "purpose": long, "desired_outcome": long, "relationships": {AISHA: long},
+               "likely_asks": [{"party": "Us", "ask": long, "based_on": long}] * 6,
+               "questions": [item] * 5, "risks": [item] * 6}
+    rc, _ = run(tmp_path, "--meeting-id", "m_001", llm=FakeLLM(final(verbose)))
+    assert rc == 0
+    text = brief(tmp_path, "m_001")
+    assert len(text.split()) < 700
+    assert all(h in text for h in SECTIONS)
+    assert max(len(line.split()) for line in text.splitlines() if "word" in line) <= 45
+    assert "Return BAA redlines on data retention clauses" in text  # records are never trimmed
+    questions = text.split("## Suggested questions and talking points")[1].split("## ")[0]
+    assert sum(line[:2] in {f"{n}." for n in range(1, 6)} for line in questions.splitlines()) >= 3
+
+
+def test_short_model_output_is_not_trimmed(tmp_path):
+    rc, _ = run(tmp_path, "--meeting-id", "m_001")
+    assert rc == 0
+    assert "…" not in brief(tmp_path, "m_001")
+
+
+def test_llm_client_is_closed_inside_the_event_loop(tmp_path):
+    class ClosingLLM(FakeLLM):
+        closed = False
+
+        async def aclose(self):
+            import asyncio
+            asyncio.get_running_loop()
+            self.closed = True
+
+    llm = ClosingLLM()
+    rc, _ = run(tmp_path, "--meeting-id", "m_005", llm=llm)
+    assert rc == 0 and llm.closed
 
 
 # ---------- tool loop ----------

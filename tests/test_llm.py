@@ -109,9 +109,10 @@ def test_daily_quota_fails_fast_with_clear_message():
             {"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}})
     sleeps = []
     llm, _ = make([daily], sleeps)
-    with pytest.raises(LLMError, match="daily request limit for gemini-test"):
+    with pytest.raises(LLMError, match="daily request limit for gemini-test") as err:
         asyncio.run(llm.start_chat("s", TOOLS).send("hi"))
     assert sleeps == []
+    assert "e.g. gemini-3.8-flash" in str(err.value)
 
 
 def test_non_retryable_error_raises_llm_error():
