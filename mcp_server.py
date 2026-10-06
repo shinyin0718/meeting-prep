@@ -20,7 +20,7 @@ load_dotenv()
 
 DEFAULT_DATA_DIR = Path(__file__).parent / "data"
 
-mcp = FastMCP("meeting-prep")
+mcp = FastMCP("meeting-prep", log_level=os.environ.get("FASTMCP_LOG_LEVEL", "INFO").upper())
 
 
 def _data_dir() -> Path:

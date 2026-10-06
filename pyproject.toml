@@ -4,6 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 description = "CLI agent that turns an upcoming meeting into a one-page prep brief."
 dependencies = [
+    "google-genai>=1.30",
     "mcp[cli]>=1.20,<2",
     "python-dotenv>=1.2.4",
 ]
