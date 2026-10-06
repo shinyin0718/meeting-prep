@@ -105,3 +105,11 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 - Add a `web_search` function (Tavily) to the declarations passed to `start_chat`, or run the searches in code and pass the results in tagged blocks. Either way, record every returned URL so the brief's URLs can be checked against them.
 - `render_brief` needs sections 2, 4 and 6 inserted in spec order, and the renderer must omit any of them that is empty.
 - `--research "Name, Company"` and `--news-days` are not yet in the parser.
+
+### Live Gemini smoke test (session 2 follow-up)
+
+- `GEMINI_API_KEY` is saved as a Devin user secret. The key is valid (listing models and small prompts both work).
+- The first live `prep --meeting-id m_001` runs failed. `gemini-3.8-flash` and `gemini-3.6-flash` both returned repeated `503 UNAVAILABLE` ("high demand") on full-size requests, even after our 4 retries. Small prompts sometimes got through.
+- **Free-tier quota is 20 requests/day per model** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`). One brief uses at least 2 requests, and the retries count too. Probing burned the 3.8-flash allowance for the day.
+- Fix: a daily-quota 429 now fails fast with a plain message suggesting another `GEMINI_MODEL` instead of retrying (`tests/test_llm.py::test_daily_quota_fails_fast_with_clear_message`).
+- Still open: one successful live brief. Retry when Gemini demand is lower, preferably as a single run (no parallel probes).

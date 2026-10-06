@@ -103,6 +103,17 @@ def test_transient_errors_are_retried_with_backoff():
     assert sleeps == [2, 4]
 
 
+def test_daily_quota_fails_fast_with_clear_message():
+    daily = errors.ClientError(429, {"error": {"code": 429, "message": "quota", "status": "RESOURCE_EXHAUSTED",
+        "details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [
+            {"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}})
+    sleeps = []
+    llm, _ = make([daily], sleeps)
+    with pytest.raises(LLMError, match="daily request limit for gemini-test"):
+        asyncio.run(llm.start_chat("s", TOOLS).send("hi"))
+    assert sleeps == []
+
+
 def test_non_retryable_error_raises_llm_error():
     bad = errors.ClientError(400, {"error": {"code": 400, "message": "bad request", "status": "INVALID_ARGUMENT"}})
     llm, _ = make([bad])

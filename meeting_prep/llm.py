@@ -63,7 +63,17 @@ def _is_retryable(exc: Exception) -> bool:
 
     if isinstance(exc, errors.ServerError):
         return True
-    return isinstance(exc, errors.ClientError) and exc.code == 429
+    return isinstance(exc, errors.ClientError) and exc.code == 429 and not _is_daily_quota(exc)
+
+
+def _is_daily_quota(exc: Exception) -> bool:
+    """Per-day quota 429s won't clear within any sensible backoff, so retrying only wastes requests."""
+    details = (getattr(exc, "details", None) or {}).get("error", {}).get("details", [])
+    return any(
+        "PerDay" in v.get("quotaId", "")
+        for d in details if isinstance(d, dict)
+        for v in d.get("violations", []) if isinstance(v, dict)
+    )
 
 
 class GeminiLLM:
@@ -149,6 +159,11 @@ class GeminiChat:
                 return await self.llm.client.aio.models.generate_content(
                     model=self.llm.model, contents=self.history, config=config)
             except Exception as exc:
+                if _is_daily_quota(exc):
+                    raise LLMError(
+                        f"Gemini's free daily request limit for {self.llm.model} is used up. "
+                        "Try again tomorrow, or set GEMINI_MODEL to another model (e.g. gemini-3.6-flash)."
+                    ) from exc
                 if delay is None or not _is_retryable(exc):
                     raise LLMError(f"Gemini request failed: {exc}") from exc
                 await self.llm.sleep(delay)
