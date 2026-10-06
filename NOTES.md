@@ -177,3 +177,29 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 - The renderer omits a section when it has no content, and `## From your materials` goes between "History and open items" and "Likely asks".
 - Reuse the pattern: wrap file text in its own tag (e.g. `<materials>`), and add it to the "data, never instructions" line in `OUTPUT_CONTRACT`.
 - Live Tavily check (2026-10-06, 90-day window): Harbourview Health (fictional) returned 9 results and kept none, so the brief would say "No notable developments". AMD (amd.com, real) returned 25 and kept 8 dated in-window items, including AMD's own IR press release (primary), Reuters and CNBC (established), and Yahoo Finance, YouTube and a filings aggregator (labeled unconfirmed, since those hosts aren't on `ESTABLISHED_HOSTS`). Credit use is 3 per company.
+
+## Session 5 — file ingestion and the injection test (done)
+
+**Checkpoint:** every file-upload criterion passes with a fake LLM (`tests/test_materials.py`):
+- PDF, DOCX (tables included), TXT and MD are each read, and their points appear under "From your materials", each tagged `_(file: \`name\`)_`.
+- An unsupported type, a missing file, more than 10 files and more than 20 MB each exit 2 with a clear message. Nothing is copied, and Gemini is never called.
+- `tests/fixtures/files/injection.txt` (instructions, a phishing link, and a fake `</materials><internal_records>` breakout) leaves the brief byte-identical apart from its own "From your materials" line.
+
+### Files added / changed
+
+- `meeting_prep/materials.py`:
+  - `validate(paths)`: exists, type in `SUPPORTED`, `MAX_FILES` = 10, `MAX_TOTAL_BYTES` = 20 MB. It runs in `main()` before the Gemini key check.
+  - `stage(paths, meeting_id, root)` copies into `data/attachments/<meeting_id>/` and returns every supported file there, so re-runs reuse earlier files. Limits apply to the folder plus the new files, and are checked before copying.
+  - `load()` numbers files `F1..` in name order.
+  - `read()` returns `status` ok/unreadable with a `reason`. An encrypted PDF gives "password-protected". A bad DOCX gives "corrupt or password-protected" (encrypted .docx files aren't zip packages, so they can't be told apart). Empty text gives "no readable text".
+  - The root comes from `MEETING_PREP_ATTACHMENTS_DIR`. `tests/conftest.py` points it at `tmp_path`, so tests never touch `data/attachments/`.
+- `cli.py`: `--files FILE [FILE ...]` (`action="extend"`, so it can be repeated). Staging happens after `get_meeting`, so an unknown meeting id copies nothing. It works with `--next`.
+- `agent.py`: `<materials>` block (JSON list of `{id, file, text}` for readable files). `_defang()` replaces any `<internal_records>`, `<web_results>` or `<materials>` tag inside file text and web snippets with `[tag removed]`, so untrusted text can't close its block. Contract adds `"materials": {"F1": ["point", ...]}` and says file instructions are content.
+- `brief.py`: `_materials()` sits between "History and open items" and "Likely asks" and is omitted with no files. It keeps up to 3 points per file and about 9 in total (`MATERIAL_POINT_BUDGET // n_files`, min 1). Ids not on file are ignored, and points containing URLs are dropped. It lists unreadable files as skipped, and says "no key points for this meeting" when the model gives none.
+
+### Design decisions
+
+- **Long files:** each file is cut to the first 12,000 characters (`MAX_CHARS`) of text sent to Gemini, to stay inside free-tier limits. The brief says so ("Only the first 12,000 characters of `x` were read."), so it is never silent. The 20 MB limit is about upload size and is rejected outright.
+- **The flag is `--files`** (the spec's name), not `--attach`, which I used when discussing it with Shin.
+- **Web upload page:** Shin wants one as an extra step after session 6. It should reuse `validate`/`stage`/`load` unchanged.
+- **Live Gemini check: not done (2026-10-06).** `gemini-3.8-flash` had used up its free daily quota, and `gemini-3.6-flash` returned 503 "high demand". Next session, try one real run of m_001 with `--files tests/fixtures/files/{renewal_deck.pdf,call_notes.docx,injection.txt}`, and check that the injection text doesn't appear as a point.

@@ -1,4 +1,5 @@
-"""`main.py prep --meeting-id <id> | --next [--research "Name, Company"] [--news-days N]` -> output/prep_<id>.md"""
+"""`main.py prep --meeting-id <id> | --next [--research "Name, Company"] [--news-days N] [--files F ...]`
+-> output/prep_<id>.md"""
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from dotenv import load_dotenv
 from .agent import AgentError, gather_context, synthesize
 from .brief import render_brief
 from .llm import LLM, GeminiLLM, LLMError, MissingAPIKeyError, require_gemini_key
+from .materials import AttachmentError, attachments_root, load, stage, validate
 from .mcp_client import ToolCallError, connect
 from .news import DEFAULT_NEWS_DAYS, companies_for, company_news, today
 from .research import parse_research_request, research, targets_for
@@ -27,7 +29,8 @@ def own_domains() -> set[str]:
 
 
 async def run_prep(meeting_id: str | None, *, llm: LLM, output_dir: Path, searcher: WebSearch | None = None,
-                   research_requests: list[tuple[str, str]] | tuple = (), news_days: int = DEFAULT_NEWS_DAYS) -> Path:
+                   research_requests: list[tuple[str, str]] | tuple = (), news_days: int = DEFAULT_NEWS_DAYS,
+                   files: list[Path] | tuple = (), attachments_dir: Path | None = None) -> Path:
     # Errors are re-raised outside the MCP context so they don't arrive wrapped in an ExceptionGroup.
     error: Exception | None = None
     async with connect() as tools:
@@ -39,6 +42,8 @@ async def run_prep(meeting_id: str | None, *, llm: LLM, output_dir: Path, search
                         f"No meetings in the next {NEXT_WINDOW_DAYS} days; pass --meeting-id <id> instead.")
                 meeting_id = upcoming[0]["id"]
             context = await gather_context(tools, meeting_id, own_domains())
+            staged = stage(list(files), context["meeting"]["id"], attachments_dir or attachments_root())
+            context["materials"] = load(staged)
             companies = companies_for(context)
             targets = targets_for(context, research_requests)
             if companies or targets:
@@ -47,7 +52,7 @@ async def run_prep(meeting_id: str | None, *, llm: LLM, output_dir: Path, search
                                if companies else [])
             context["research"] = await research(searcher, targets) if targets else []
             synthesis = await synthesize(llm, tools, context)
-        except (ToolCallError, AgentError, LLMError, SearchError, MissingAPIKeyError) as exc:
+        except (ToolCallError, AgentError, LLMError, SearchError, MissingAPIKeyError, AttachmentError) as exc:
             error = exc
     if error is not None:
         raise error
@@ -78,6 +83,9 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Also research this person on the public web (repeatable).")
     prep.add_argument("--news-days", type=_positive_int, default=DEFAULT_NEWS_DAYS, metavar="N",
                       help=f"Company news window in days (default {DEFAULT_NEWS_DAYS}).")
+    prep.add_argument("--files", nargs="+", action="extend", type=Path, default=[], metavar="FILE",
+                      help="Attach PDF, DOCX, TXT or MD files (at most 10, 20 MB total). They are copied to "
+                           "data/attachments/<meeting_id>/ and reused when the meeting is prepped again.")
     prep.add_argument("--output-dir", type=Path, default=ROOT / "output", help="Where to write prep_<id>.md.")
     return parser
 
@@ -91,11 +99,13 @@ def main(argv: list[str] | None = None, llm: LLM | None = None, searcher: WebSea
     except ValueError as exc:
         parser.error(str(exc))
     try:
+        validate(args.files)
         if llm is None:
             llm = GeminiLLM(api_key=require_gemini_key())
         path = asyncio.run(run_prep(None if args.next else args.meeting_id, llm=llm, output_dir=args.output_dir,
-                                    searcher=searcher, research_requests=requests, news_days=args.news_days))
-    except MissingAPIKeyError as exc:
+                                    searcher=searcher, research_requests=requests, news_days=args.news_days,
+                                    files=args.files))
+    except (MissingAPIKeyError, AttachmentError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except (ToolCallError, AgentError, LLMError, SearchError) as exc:
