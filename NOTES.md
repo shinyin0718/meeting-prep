@@ -62,7 +62,7 @@ People with no history: Tom Becker, John Smith. Own company: Lumora Analytics (`
 ### For sessions 2+
 
 - Tests import `mcp_server` directly (functions stay plain callables after `@mcp.tool()`); use `mcp.shared.memory.create_connected_server_and_client_session(srv.mcp._mcp_server)` for in-process protocol tests, or `stdio_client` to spawn `mcp_server.py` like the agent will.
-- `mcp dev` needs Node/npx; the Inspector prompts for auth unless `DANGEROUSLY_OMIT_AUTH=true` is set (local only). Headless check: `npx @modelcontextprotocol/inspector --cli uv run mcp_server.py --method tools/list`.
+- `mcp dev` needs Node/npx and runs the latest `@modelcontextprotocol/inspector` (2.9.0 verified). Set `DANGEROUSLY_OMIT_AUTH=true` to skip the Inspector auth token (local only). If the Inspector page shows "404 Not Found", the npx cache is corrupt (happens when two `npx @modelcontextprotocol/inspector` runs install at once): delete the matching `~/.npm/_npx/<hash>` dir and rerun. Headless check: `npx @modelcontextprotocol/inspector --cli uv run mcp_server.py --method tools/list`.
 - The spec says to follow the Anthropic Academy course project structure (MCP client, Claude wrapper, CLI app); that reference repo was not available in session 1 — provide it for session 2.
 - `.gitignore` already excludes `.env`, `output/`, `data/cache/`, `data/attachments/`.
 - Skipped in session 1 (by scope): agent, CLI, SKILL.md, web research, file ingestion, evals.
