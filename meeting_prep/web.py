@@ -31,7 +31,7 @@ from .materials import (
     validate,
 )
 from .mcp_client import ToolCallError, connect
-from .mydata import DataError, add_meeting, delete_meeting, is_mine
+from .mydata import DataError, add_meeting, company_names, delete_meeting, is_mine
 from .news import DEFAULT_NEWS_DAYS
 from .web_search import SearchError, WebSearch
 
@@ -83,6 +83,7 @@ def create_app(*, llm_factory: Callable[[], LLM] | None = None,
                 "files": [p.name for p in stored(m["id"])],
                 "mine": is_mine(m["id"]),
             } for m in await _tools(fetch)],
+            "companies": company_names(),
             "limits": {"max_files": MAX_FILES, "max_total_bytes": MAX_TOTAL_BYTES, "types": list(SUPPORTED),
                        "default_news_days": DEFAULT_NEWS_DAYS},
         }

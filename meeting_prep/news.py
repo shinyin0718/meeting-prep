@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
+from .mydata import real_domain
 from .web_search import SearchResult, WebSearch
 
 DEFAULT_NEWS_DAYS = 90
@@ -55,8 +56,9 @@ def companies_for(context: dict[str, Any]) -> list[Company]:
 
 def queries(c: Company) -> list[tuple[str, str]]:
     """(query, Tavily topic). The domain disambiguates companies with common names."""
+    domain = f" {real_domain(c.domain)}" if real_domain(c.domain) else ""
     return [
-        (f'"{c.name}" {c.domain} announcement OR press release', "general"),
+        (f'"{c.name}"{domain} announcement OR press release', "general"),
         (f'"{c.name}" funding OR acquisition OR partnership OR earnings OR launch', "news"),
         (f'"{c.name}" CEO OR leadership OR layoffs OR restructuring OR lawsuit OR regulator', "news"),
     ][:SEARCHES_PER_COMPANY]

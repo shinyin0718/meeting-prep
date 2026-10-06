@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from .mydata import real_domain
 from .web_search import SearchResult, WebSearch
 
 MAX_SEARCHES_PER_PERSON = 5
@@ -52,7 +53,8 @@ def targets_for(context: dict[str, Any], requests: list[tuple[str, str]] | tuple
 def queries(t: Target) -> list[str]:
     """Name, company, role and email domain together: a common name alone finds the wrong person."""
     first = " ".join([f'"{t.name}"', f'"{t.company}"', *([t.role] if t.role else [])])
-    second = f'"{t.name}" {t.domain}' if t.domain else f'"{t.name}" {t.company} profile'
+    domain = real_domain(t.domain)
+    second = f'"{t.name}" {domain}' if domain else f'"{t.name}" {t.company} profile'
     third = f'"{t.name}" {t.company} interview OR talk OR article'
     return [first, second, third][:QUERIES_PER_PERSON]
 
@@ -60,8 +62,8 @@ def queries(t: Target) -> list[str]:
 def is_match(t: Target, r: SearchResult) -> bool:
     text = f"{r.title} {r.content} {r.url}".lower()
     affiliations = {t.company.lower()}
-    if t.domain:
-        affiliations |= {t.domain.lower(), t.domain.lower().split(".")[0]}
+    if domain := real_domain(t.domain):
+        affiliations |= {domain.lower(), domain.lower().split(".")[0]}
     return t.name.lower() in text and any(a in text for a in affiliations if a)
 
 

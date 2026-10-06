@@ -44,7 +44,7 @@ uv run mcp_server.py             # run the MCP server on stdio
 
 `uv run web.py` starts a local page at http://127.0.0.1:8000. Leave the terminal open while you use it, and press Ctrl+C to stop.
 
-1. **Pick a meeting**, or click **+ Add a meeting** to add your own. Fill in the title, date and time, who's coming, and optionally the agenda, past conversations and open to-dos, then click **Save meeting**. Your meetings get a "Yours" label and a **Delete** link. People and companies are added the first time you use them and reused after that. Everything you add is saved in `data/mine/` on your computer only (it's gitignored) and uses real dates.
+1. **Pick a meeting**, or click **+ Add a meeting** to add your own. Fill in the title, date and time, who's coming, and optionally the agenda, past conversations and open to-dos, then click **Save meeting**. Your meetings get a "Yours" label and a **Delete** link. Email is optional. Without one, the company name you type decides where the person works, so pick it from the suggestions when it's already listed (your own company makes them a colleague). People and companies are added the first time you use them and reused after that. Everything you add is saved in `data/mine/` on your computer only (it's gitignored) and uses real dates.
 2. **Add your files** (optional) by dragging them onto the dashed box or clicking it. The same rules as `--files` apply: PDF, DOCX, TXT or MD, at most 10 files and 20 MB per meeting. Files already attached to the meeting are listed with a **Remove** button.
 3. Click **Prepare brief**. The brief appears on the page with **Download (.md)** and **Copy text** buttons, and is also saved to `output/prep_<id>.md`.
 

@@ -6,6 +6,8 @@ import re
 from datetime import datetime
 from typing import Any
 
+from .mydata import real_domain
+
 NO_HISTORY = "no prior interactions on record"
 SHOWN_HISTORY = 3
 TAG = "_(internal record)_"
@@ -115,7 +117,8 @@ def _snapshot(news: list[dict], rows: dict[str, list[dict]], cites: dict[str, in
     days = news[0]["days"]
     out = ["## Company snapshot", "", f"_Public web sources, last {days} days; ranked by relevance, then date._", ""]
     for entry in news:
-        out += [f"**{entry['company']}** ({entry['domain']})", ""]
+        domain = real_domain(entry["domain"])
+        out += [f"**{entry['company']}**" + (f" ({domain})" if domain else ""), ""]
         if not rows[entry["domain"]]:
             out.append(f"- {NO_NEWS.format(days=days)}")
         for r in rows[entry["domain"]]:
