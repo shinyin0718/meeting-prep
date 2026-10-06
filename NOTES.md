@@ -140,4 +140,4 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 - `TavilySearch.search` has `topic` already; add a date window (`start_date` + `filter_by_published_date`, or `time_range`) for the 90-day default and `--news-days`.
 - One search per unique external domain: `context["external_domains"]` is already deduped and excludes `OWN_COMPANY_DOMAINS`.
 - Source ids are numbered across the whole brief in `research()`; company news needs to continue that numbering (or move numbering into the renderer) so `## Sources` stays one list.
-- No live Tavily run yet. No `TAVILY_API_KEY` secret exists, and the tests are all mocked.
+- Live Tavily check (2026-10-06, `TAVILY_API_KEY` is now a saved Devin secret): `research()` on Tom Becker / Harbourview Health came back `unconfirmed`. 14 real results, all for other Tom Beckers. That's expected, because the seed people are fictional. A manual target, Lisa Su / AMD, came back `confirmed` with 4 dated, citable results. 3 credits per person. Gemini was not part of this check.
