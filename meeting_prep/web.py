@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from markdown_it import MarkdownIt
 
@@ -31,11 +31,12 @@ from .materials import (
     validate,
 )
 from .mcp_client import ToolCallError, connect
+from .mydata import DataError, add_meeting, delete_meeting, is_mine
 from .news import DEFAULT_NEWS_DAYS
 from .web_search import SearchError, WebSearch
 
 STATIC = Path(__file__).resolve().parent / "static"
-LIST_DAYS = 30
+LIST_DAYS = 365
 # Raw HTML in the brief (model or web text) is escaped, and javascript: links are refused.
 _markdown = MarkdownIt("commonmark", {"html": False})
 
@@ -80,10 +81,26 @@ def create_app(*, llm_factory: Callable[[], LLM] | None = None,
                 "attendees": [{"name": a["name"], "company": a["company"], "is_internal": a["is_internal"]}
                               for a in m["attendees"]],
                 "files": [p.name for p in stored(m["id"])],
+                "mine": is_mine(m["id"]),
             } for m in await _tools(fetch)],
             "limits": {"max_files": MAX_FILES, "max_total_bytes": MAX_TOTAL_BYTES, "types": list(SUPPORTED),
                        "default_news_days": DEFAULT_NEWS_DAYS},
         }
+
+    @app.post("/api/meetings")
+    def create_meeting(form: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
+        try:
+            return add_meeting(form)
+        except DataError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.delete("/api/meetings/{meeting_id}")
+    def remove_meeting(meeting_id: str) -> dict[str, str]:
+        try:
+            delete_meeting(meeting_id)
+        except DataError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        return {"deleted": meeting_id}
 
     @app.post("/api/prep")
     async def prep(meeting_id: Annotated[str, Form()], news_days: Annotated[int, Form()] = DEFAULT_NEWS_DAYS,

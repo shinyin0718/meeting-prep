@@ -1,8 +1,10 @@
 """Meeting prep MCP server.
 
-Read-only access to the mock calendar, contact and interaction data in data/.
-Dates in the data are stored relative to "today" (e.g. start_in_days, days_ago)
-and resolved at call time, so the seed data never goes stale.
+Read-only access to the calendar, contact and interaction data: the sample data in data/
+plus your own records in data/mine/ (saved by the web page's "Add meeting" form; gitignored).
+Sample dates are stored relative to "today" (start_in_days, days_ago, due_in_days) and resolved
+at call time, so the seed data never goes stale; your own records use real dates
+(start_date, date, due_date).
 """
 
 import json
@@ -27,12 +29,19 @@ def _data_dir() -> Path:
     return Path(os.environ.get("MEETING_PREP_DATA_DIR") or DEFAULT_DATA_DIR)
 
 
-def _load(name: str) -> list[dict[str, Any]]:
-    path = _data_dir() / f"{name}.json"
+def _user_data_dir() -> Path:
+    return Path(os.environ.get("MEETING_PREP_USER_DATA_DIR") or _data_dir() / "mine")
+
+
+def _read(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     with path.open(encoding="utf-8") as f:
         return json.load(f)
+
+
+def _load(name: str) -> list[dict[str, Any]]:
+    return _read(_data_dir() / f"{name}.json") + _read(_user_data_dir() / f"{name}.json")
 
 
 def _today() -> date:
@@ -56,7 +65,10 @@ def _normalize(value: str) -> str:
 
 
 def _meeting_start(meeting: dict[str, Any]) -> datetime:
-    day = _today() + timedelta(days=meeting["start_in_days"])
+    if meeting.get("start_date"):
+        day = date.fromisoformat(meeting["start_date"])
+    else:
+        day = _today() + timedelta(days=meeting["start_in_days"])
     return datetime.combine(day, time.fromisoformat(meeting["start_time"])).astimezone()
 
 
@@ -86,7 +98,7 @@ def _history(email: str) -> list[dict[str, Any]]:
     rows = [
         {
             "id": i["id"],
-            "date": (today - timedelta(days=i["days_ago"])).isoformat(),
+            "date": i.get("date") or (today - timedelta(days=i["days_ago"])).isoformat(),
             "type": i["type"],
             "summary": i["summary"],
         }
@@ -251,7 +263,7 @@ def get_open_items(
         person_email = _normalize(o["person_email"]) if o.get("person_email") else None
         company_domain = _normalize(o["company_domain"]) if o.get("company_domain") else None
         if person_email in emails or company_domain in domains:
-            due = today + timedelta(days=o["due_in_days"])
+            due = date.fromisoformat(o["due_date"]) if o.get("due_date") else today + timedelta(days=o["due_in_days"])
             items.append(
                 {
                     "id": o["id"],

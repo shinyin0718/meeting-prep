@@ -203,7 +203,8 @@ def _render(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
         p = person["profile"]
         side = "our side" if p["is_internal"] else "external"
         tenure = _clean(p.get("tenure")).rstrip(".")
-        line = f"- **{p['name']}** — {p['role']}, {p['company']} ({side})." + (f" {tenure}." if tenure else "")
+        role = f"{p['role']}, " if p.get("role") else ""
+        line = f"- **{p['name']}** — {role}{p['company']} ({side})." + (f" {tenure}." if tenure else "")
         if person["history"]:
             last = person["history"][0]
             line += f" Last interaction: {last['date']} ({last['type']}) {TAG}."
