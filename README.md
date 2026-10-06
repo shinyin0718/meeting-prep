@@ -17,6 +17,7 @@ cp .env.example .env     # then fill in values; never commit .env
 | --- | --- |
 | `GEMINI_API_KEY` | Google Gemini API key, free tier ([get one](https://aistudio.google.com/apikey)). Needed for every real brief |
 | `GEMINI_MODEL` | Gemini model id, default `gemini-3.8-flash` |
+| `GEMINI_FALLBACK_MODELS` | Models to try next when one is busy or out of free requests, comma-separated (empty = none). Default `gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-flash-latest,gemini-3.5-flash-lite,gemini-flash-lite-latest` (the lite models are weaker but have their own limits) |
 | `TAVILY_API_KEY` | Tavily Search API key, free plan, 1,000 credits a month ([get one](https://app.tavily.com)). Needed when a meeting has an external attendee |
 | `OWN_COMPANY_DOMAINS` | Comma-separated email domains of your own company; seed data uses `lumora-analytics.com` |
 | `MEETING_PREP_TODAY` | Optional `YYYY-MM-DD` to pin "today" for reproducible runs |
@@ -114,7 +115,7 @@ tests/                  pytest suite and fixtures
 
 ## Troubleshooting
 
-- **"free daily request limit … is used up"**: Gemini's free tier allows about 20 requests a day per model, and a brief uses 1–3 of them. Try again tomorrow, or set `GEMINI_MODEL` to another model (e.g. `gemini-3.6-flash`).
+- **"Every free Gemini model is busy or out of free requests"**: Gemini's free tier allows about 20 requests a day per model, and a brief uses 1–3 of them. When a model is busy ("high demand") or used up, the app moves on to the next one in `GEMINI_FALLBACK_MODELS` by itself, and the web page shows which step it's on. You only see this message once every model has failed. Try again in a few minutes, or tomorrow if they are all used up (limits reset at midnight Pacific time).
 - **503 "high demand"**: Gemini's free tier is busy. The client retries a few times; if it still fails, try later.
 - **MCP Inspector shows 404**: clear the npm cache (`npm cache clean --force`) and rerun `uv run mcp dev mcp_server.py`.
 - **"TAVILY_API_KEY is not set"**: any meeting with an external attendee searches company news. Add the key, or prep an internal meeting such as m_005.

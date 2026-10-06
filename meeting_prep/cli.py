@@ -7,7 +7,7 @@ import argparse
 import asyncio
 import os
 import sys
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -31,8 +31,10 @@ def own_domains() -> set[str]:
 
 async def run_prep(meeting_id: str | None, *, llm: LLM, output_dir: Path, searcher: WebSearch | None = None,
                    research_requests: list[tuple[str, str]] | tuple = (), news_days: int = DEFAULT_NEWS_DAYS,
-                   files: list[Path] | tuple = (), attachments_dir: Path | None = None) -> Path:
+                   files: list[Path] | tuple = (), attachments_dir: Path | None = None,
+                   progress: Callable[[str], None] | None = None) -> Path:
     # Errors are re-raised outside the MCP context so they don't arrive wrapped in an ExceptionGroup.
+    say = progress or (lambda _message: None)
     error: Exception | None = None
     async with connect() as tools:
         try:
@@ -42,16 +44,24 @@ async def run_prep(meeting_id: str | None, *, llm: LLM, output_dir: Path, search
                     raise ToolCallError(
                         f"No meetings in the next {NEXT_WINDOW_DAYS} days; pass --meeting-id <id> instead.")
                 meeting_id = upcoming[0]["id"]
+            say("Reading the meeting and your records")
             context = await gather_context(tools, meeting_id, own_domains())
             staged = stage(list(files), context["meeting"]["id"], attachments_dir or attachments_root())
+            if staged:
+                say(f"Reading your files ({len(staged)})")
             context["materials"] = load(staged)
             companies = companies_for(context)
             targets = targets_for(context, research_requests)
             if companies or targets:
                 searcher = searcher or TavilySearch()
+            if companies:
+                say("Searching recent news about " + ", ".join(c.name for c in companies))
             context["news"] = (await company_news(searcher, companies, days=news_days, today=today())
                                if companies else [])
+            if targets:
+                say("Looking up new attendees: " + ", ".join(t.name for t in targets))
             context["research"] = await research(searcher, targets) if targets else []
+            say("Asking Gemini to write the brief")
             synthesis = await synthesize(llm, tools, context)
         except (ToolCallError, AgentError, LLMError, SearchError, MissingAPIKeyError, AttachmentError) as exc:
             error = exc
@@ -112,7 +122,7 @@ def main(argv: list[str] | None = None, llm: LLM | None = None, searcher: WebSea
     try:
         validate(args.files)
         if llm is None:
-            llm = GeminiLLM(api_key=require_gemini_key())
+            llm = GeminiLLM(api_key=require_gemini_key(), notice=lambda m: print(m, file=sys.stderr))
         path = asyncio.run(_run_and_close(llm, run_prep(
             None if args.next else args.meeting_id, llm=llm, output_dir=args.output_dir, searcher=searcher,
             research_requests=requests, news_days=args.news_days, files=args.files)))
