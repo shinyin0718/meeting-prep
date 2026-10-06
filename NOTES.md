@@ -203,3 +203,44 @@ tests/test_llm.py    GeminiChat against a fake client: declarations, call ids, t
 - **The flag is `--files`** (the spec's name), not `--attach`, which I used when discussing it with Shin.
 - **Web upload page:** Shin wants one as an extra step after session 6. It should reuse `validate`/`stage`/`load` unchanged.
 - **Live Gemini check: not done (2026-10-06).** `gemini-3.8-flash` had used up its free daily quota, and `gemini-3.6-flash` returned 503 "high demand". Next session, try one real run of m_001 with `--files tests/fixtures/files/{renewal_deck.pdf,call_notes.docx,injection.txt}`, and check that the injection text doesn't appear as a point.
+
+## Session 6 — evals, README, cleanup (done)
+
+**Checkpoint:** `uv run evals.py` passes 3/3 (mocked). `uv run pytest` passes (130, plus 1 live test skipped by default). `uvx ruff check .` is clean. The README covers setup, commands, tests, evals, layout, safety and troubleshooting.
+
+### Files added / changed
+
+- `evals.py` (repo root, so `uv run evals.py` can import `meeting_prep`): three `Scenario`s, `normal` (m_001), `new_contact` (m_002) and `no_agenda` (m_003). Each brief is checked for:
+  - the core sections, in order;
+  - `must_include` / `must_not_include` strings;
+  - under 700 words;
+  - in mocked mode, that every URL came from the fixtures;
+  - that no API key appears in it.
+
+  `mocked_only` strings depend on the fixtures and are skipped with `--live`. Mocked mode pins `MEETING_PREP_TODAY=2026-01-15` (fixture dates). Both modes use an empty temp attachments folder and default `OWN_COMPANY_DOMAINS` to the seed domain. Exit 1 lists the failed checks. `--scenario NAME` runs one. Briefs go to `output/evals/`.
+- `meeting_prep/fakes.py`: `ScriptedLLM`, `json_reply` and `FixtureSearch`, moved out of `tests/test_agent.py` so the eval script can use them. The tests alias them as `FakeLLM` / `FakeSearch`.
+- `tests/test_evals.py`: the eval passes when mocked, covers the three scenarios, and reports missing/forbidden strings and stray URLs.
+- `tests/test_live.py`: one real Gemini brief for m_005 (internal, so no Tavily). It is skipped unless `MEETING_PREP_LIVE=1`.
+- `brief.py`: one-page guard (see below). `agent.py`: the contract now gives word limits per field.
+- `llm.py`: the daily-quota message suggests a *different* model (it used to suggest gemini-3.6-flash even when that was the exhausted one). `GeminiLLM.aclose()` is new, and `cli._run_and_close` calls it inside the event loop, which removed an "Event loop is closed" traceback printed after every real run.
+- Lint cleanup: `mcp_server._today()` uses a timezone-aware now, and nested `async with` blocks were combined.
+
+### Design decisions
+
+- **One-page guard.** The first real Gemini brief (m_001, gemini-3.6-flash) came out at 848 words, over the spec's 700, because of long relationship lines and long `based_on` text. Now:
+  - model text is clipped with "…" (`SENTENCE_WORDS` 25, `ITEM_WORDS` 20, `RELATIONSHIP_WORDS` 12, `BASIS_WORDS` 8);
+  - if the brief is still at or over `WORD_LIMIT`, `render_brief` drops model-written list items in `TRIM_ORDER` (risks → 2, asks → 2, questions → 3, then risks/asks → 1).
+
+  Records are never trimmed, so a brief whose factual parts alone exceed 700 words (lots of news and files) can still go over.
+- **Live eval misread own company.** The first live run had no `.env`, so Lumora counted as external and its news was searched. The eval now sets the seed domain when `OWN_COMPANY_DOMAINS` is unset.
+
+### Live results (2026-10-06)
+
+- `uv run evals.py --live` with `GEMINI_MODEL=gemini-3.7-flash`: `new_contact` (592 words) and `no_agenda` (456 words) **pass** with real Gemini and Tavily. Tom Becker and John Smith are both "couldn't confirm identity", which is correct since the seed people are fictional. `normal` got 503 "high demand" twice and was not retried further, to save quota.
+- gemini-3.8-flash and gemini-3.6-flash used up their free daily quota today. The models list also has gemini-3.7-flash, gemini-3.5-flash and gemini-flash-latest, each with its own quota.
+- Still to try: a live m_001 after the one-page guard, and m_001 with `--files tests/fixtures/files/{renewal_deck.pdf,call_notes.docx,injection.txt}`.
+
+### For the web upload page (next)
+
+- Reuse `materials.validate` / `stage` / `load` and `cli.run_prep(meeting_id, llm=..., output_dir=..., files=[...])`. Upload to a temp path, then pass the paths in `files`.
+- Shin prefers point-and-click: a meeting picker (from `list_upcoming_meetings`), a file drop zone, a "Prepare brief" button, and the rendered brief with a download link.

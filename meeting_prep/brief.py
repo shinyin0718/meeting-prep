@@ -15,6 +15,11 @@ NO_NEWS = "No notable developments found in the last {days} days."
 MAX_NEWS_ITEMS = 5
 MAX_MATERIAL_POINTS = 3
 MATERIAL_POINT_BUDGET = 9  # across all files, to stay on one page
+WORD_LIMIT = 700
+# Word caps on model-written text, so a verbose reply can't push the brief past one page.
+SENTENCE_WORDS, ITEM_WORDS, RELATIONSHIP_WORDS, BASIS_WORDS = 25, 20, 12, 8
+# Model-written lists are trimmed in this order (down to the count given) while the brief is over WORD_LIMIT.
+TRIM_ORDER = (("risks", 2), ("likely_asks", 2), ("questions", 3), ("risks", 1), ("likely_asks", 1))
 
 
 def _when(meeting: dict) -> str:
@@ -27,6 +32,11 @@ def _clean(text: Any) -> str:
     return " ".join(str(text or "").split())
 
 
+def _clip(text: Any, words: int) -> str:
+    parts = _clean(text).split()
+    return " ".join(parts) if len(parts) <= words else " ".join(parts[:words]).rstrip(",;:.") + "…"
+
+
 def _items(entries: list, render) -> list[str]:
     lines = [render(e) for e in entries if isinstance(e, dict)]
     lines = [line for line in lines if line]
@@ -34,7 +44,7 @@ def _items(entries: list, render) -> list[str]:
 
 
 def _based_on(entry: dict) -> str:
-    basis = _clean(entry.get("based_on"))
+    basis = _clip(entry.get("based_on"), BASIS_WORDS)
     return f" _(based on: {basis})_" if basis else ""
 
 
@@ -154,6 +164,17 @@ def _materials(materials: list[dict], synthesis: dict[str, Any]) -> list[str]:
 
 
 def render_brief(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
+    """The brief as Markdown. Records are never trimmed; only model-written lists are, to fit WORD_LIMIT."""
+    synthesis = dict(synthesis)
+    text = _render(context, synthesis)
+    for key, keep in TRIM_ORDER:
+        while len(text.split()) >= WORD_LIMIT and len(synthesis.get(key) or []) > keep:
+            synthesis[key] = synthesis[key][:-1]
+            text = _render(context, synthesis)
+    return text
+
+
+def _render(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
     meeting = context["meeting"]
     people = context["people"]
     names = {p["profile"]["email"]: p["profile"]["name"] for p in people}
@@ -166,8 +187,8 @@ def render_brief(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
     out: list[str] = [f"# Prep brief: {meeting['title']}", "", f"{_when(meeting)} · meeting `{meeting['id']}`", ""]
 
     out += ["## Meeting at a glance", ""]
-    out.append(f"- **Purpose:** {_clean(synthesis.get('purpose')) or 'No record.'}")
-    out.append(f"- **Desired outcome:** {_clean(synthesis.get('desired_outcome')) or 'No record.'}")
+    out.append(f"- **Purpose:** {_clip(synthesis.get('purpose'), SENTENCE_WORDS) or 'No record.'}")
+    out.append(f"- **Desired outcome:** {_clip(synthesis.get('desired_outcome'), SENTENCE_WORDS) or 'No record.'}")
     if meeting["agenda"]:
         out.append(f"- **Agenda** {TAG}:")
         out += [f"  {n}. {_clean(item)}" for n, item in enumerate(meeting["agenda"], 1)]
@@ -186,7 +207,7 @@ def render_brief(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
         if person["history"]:
             last = person["history"][0]
             line += f" Last interaction: {last['date']} ({last['type']}) {TAG}."
-            rel = _clean(relationships.get(p["email"].lower()))
+            rel = _clip(relationships.get(p["email"].lower()), RELATIONSHIP_WORDS)
             if rel and rel.lower() != "no record":
                 line += f" Relationship: {rel}"
         else:
@@ -217,16 +238,16 @@ def render_brief(context: dict[str, Any], synthesis: dict[str, Any]) -> str:
 
     out += ["## Likely asks", ""]
     out += _items(synthesis.get("likely_asks", []), lambda e: (
-        f"- **{_clean(e.get('party')) or 'Unknown'}:** {_clean(e.get('ask'))}{_based_on(e)}" if _clean(e.get("ask")) else ""))
+        f"- **{_clean(e.get('party')) or 'Unknown'}:** {_clip(e.get('ask'), ITEM_WORDS)}{_based_on(e)}" if _clean(e.get("ask")) else ""))
     out += ["", "## Suggested questions and talking points", ""]
     questions = [e for e in synthesis.get("questions", []) if isinstance(e, dict) and _clean(e.get("text"))][:5]
-    out += [f"{n}. {_clean(e['text'])}{_based_on(e)}" for n, e in enumerate(questions, 1)] or ["- No record."]
+    out += [f"{n}. {_clip(e['text'], ITEM_WORDS)}{_based_on(e)}" for n, e in enumerate(questions, 1)] or ["- No record."]
     out += ["", "## Risks and watch-outs", ""]
     unconfirmed = [f"- {UNCONFIRMED.capitalize()} of {e['name']} from public sources; confirm their role "
                    "and background directly. _(based on: web search)_"
                    for e in research if e["status"] == "unconfirmed"]
     risks = [line for line in _items(synthesis.get("risks", []), lambda e: (
-        f"- {_clean(e.get('text'))}{_based_on(e)}" if _clean(e.get("text")) else "")) if line != "- No record."]
+        f"- {_clip(e.get('text'), ITEM_WORDS)}{_based_on(e)}" if _clean(e.get("text")) else "")) if line != "- No record."]
     unconfirmed += [f"- Unconfirmed report on {e['company']}: {r['summary'].rstrip('.')}. Don't present it as fact. "
                     "_(based on: web search)_" for e in news for r in rows[e["domain"]] if r["unconfirmed"]]
     out += unconfirmed + risks or ["- No record."]

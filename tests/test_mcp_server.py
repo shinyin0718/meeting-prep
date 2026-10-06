@@ -295,11 +295,10 @@ async def test_stdio_transport_lists_tools():
         args=[str(ROOT / "mcp_server.py")],
         env={"OWN_COMPANY_DOMAINS": "lumora-analytics.com", "MEETING_PREP_TODAY": "2026-01-15"},
     )
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            tools = await session.list_tools()
-            result = await session.call_tool("get_meeting", {"meeting_id": "m_005"})
+    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+        await session.initialize()
+        tools = await session.list_tools()
+        result = await session.call_tool("get_meeting", {"meeting_id": "m_005"})
     assert {t.name for t in tools.tools} == TOOL_NAMES
     assert not result.isError
     assert all(a["is_internal"] for a in result.structuredContent["attendees"])

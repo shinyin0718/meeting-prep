@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 DEFAULT_MODEL = "gemini-3.8-flash"
+FALLBACK_MODEL = "gemini-3.6-flash"
 RETRY_DELAYS = (2, 4, 8, 16)
 
 
@@ -90,6 +91,11 @@ class GeminiLLM:
     def start_chat(self, system: str, tools: list[dict]) -> GeminiChat:
         return GeminiChat(self, system, tools)
 
+    async def aclose(self) -> None:
+        aio = getattr(self.client, "aio", None)
+        if hasattr(aio, "aclose"):
+            await aio.aclose()
+
 
 def function_declarations(tools: list[dict]) -> list:
     """MCP tool listings ({name, description, inputSchema}) -> Gemini declarations."""
@@ -160,9 +166,10 @@ class GeminiChat:
                     model=self.llm.model, contents=self.history, config=config)
             except Exception as exc:
                 if _is_daily_quota(exc):
+                    other = FALLBACK_MODEL if self.llm.model == DEFAULT_MODEL else DEFAULT_MODEL
                     raise LLMError(
-                        f"Gemini's free daily request limit for {self.llm.model} is used up. "
-                        "Try again tomorrow, or set GEMINI_MODEL to another model (e.g. gemini-3.6-flash)."
+                        f"Gemini's free daily request limit for {self.llm.model} is used up. Try again tomorrow, "
+                        f"or set GEMINI_MODEL to another model (e.g. {other}); each model has its own limit."
                     ) from exc
                 if delay is None or not _is_retryable(exc):
                     raise LLMError(f"Gemini request failed: {exc}") from exc

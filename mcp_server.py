@@ -37,7 +37,7 @@ def _load(name: str) -> list[dict[str, Any]]:
 
 def _today() -> date:
     override = os.environ.get("MEETING_PREP_TODAY")
-    return date.fromisoformat(override) if override else date.today()
+    return date.fromisoformat(override) if override else datetime.now().astimezone().date()
 
 
 def _now() -> datetime:

@@ -42,6 +42,10 @@ Reply with one JSON object and nothing else:
   "materials": {"<file id from materials, e.g. F1>": ["key point", "key point"]}
 }
 Give 3 to 5 questions. Base every item on a record; if the records don't support an item, leave it out.
+Keep it short so the brief fits on one page: purpose and desired_outcome at most 25 words each,
+relationships at most 12 words, at most 4 likely asks and 4 risks, each ask, question or risk at
+most 20 words, and each based_on at most 8 words naming the record (e.g. "open item o_003",
+"2026-09-15 email", "agenda item 2").
 For attendees with no interactions, set their relationship to "no record".
 
 Background (only for people listed under "people" in <web_results>; otherwise use {}): 2 to 4 facts per person.

@@ -7,6 +7,7 @@ import argparse
 import asyncio
 import os
 import sys
+from collections.abc import Awaitable
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -90,6 +91,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+async def _run_and_close(llm: LLM, job: Awaitable[Path]) -> Path:
+    """Awaits the job, then closes the LLM's HTTP client while the event loop is still open."""
+    try:
+        return await job
+    finally:
+        aclose = getattr(llm, "aclose", None)
+        if aclose is not None:
+            await aclose()
+
+
 def main(argv: list[str] | None = None, llm: LLM | None = None, searcher: WebSearch | None = None) -> int:
     load_dotenv(ROOT / ".env")
     parser = build_parser()
@@ -102,9 +113,9 @@ def main(argv: list[str] | None = None, llm: LLM | None = None, searcher: WebSea
         validate(args.files)
         if llm is None:
             llm = GeminiLLM(api_key=require_gemini_key())
-        path = asyncio.run(run_prep(None if args.next else args.meeting_id, llm=llm, output_dir=args.output_dir,
-                                    searcher=searcher, research_requests=requests, news_days=args.news_days,
-                                    files=args.files))
+        path = asyncio.run(_run_and_close(llm, run_prep(
+            None if args.next else args.meeting_id, llm=llm, output_dir=args.output_dir, searcher=searcher,
+            research_requests=requests, news_days=args.news_days, files=args.files)))
     except (MissingAPIKeyError, AttachmentError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
